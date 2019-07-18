@@ -240,7 +240,7 @@ where
 			purge_chain::<F, _>(params, spec_factory, version).map(|_| None),
 		params::CoreParams::Revert(params) =>
 			revert_chain::<F, _>(params, spec_factory, version).map(|_| None),
-		params::CoreParams::Custom(params) => Ok(Some(params)),
+		params::CoreParams::Custom(params) => Ok(Some((params, spec_factory, exit, version))),
 	}
 }
 
