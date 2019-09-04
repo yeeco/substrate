@@ -419,6 +419,8 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: ::std::fmt::Debug> BasePool<Hash
 		let mut to_import = vec![];
 		for tag in tags {
 			to_import.append(&mut self.future.satisfy_tags(::std::iter::once(&tag)));
+			// clear stale
+			self.future.remove_tags(::std::iter::once(&tag));
 		}
 		for tx in to_import{
 			match self.import_to_ready(tx){

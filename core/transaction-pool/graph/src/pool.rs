@@ -420,8 +420,6 @@ impl<B: ChainApi> Pool<B> {
 
 	pub fn import_provides(&self, tags: impl IntoIterator<Item=Tag>) {
 		self.pool.write().import_provides(tags);
-		// clear stale
-		// todo
 	}
 
 	/// Returns transaction hash

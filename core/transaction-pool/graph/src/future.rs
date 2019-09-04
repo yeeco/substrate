@@ -26,6 +26,8 @@ use substrate_primitives::hexdisplay::HexDisplay;
 use sr_primitives::transaction_validity::{
 	TransactionTag as Tag,
 };
+use parity_codec::Decode;
+use crate::relay::RelayTag;
 
 use crate::base_pool::Transaction;
 
@@ -189,6 +191,38 @@ impl<Hash: hash::Hash + Eq + Clone, Ex> FutureTransactions<Hash, Ex> {
 		}
 
 		became_ready
+	}
+
+	/// Remove provided tags in future vector
+	/// now just for relay transfer
+	///
+	/// Returns null
+	pub fn remove_tags<T: AsRef<Tag>>(&mut self, tags: impl IntoIterator<Item=T>) {
+		for tag in tags {
+			let tag= tag.as_ref();
+			let mut ext_tags = vec![];
+			if let Some(r_t) = Decode::decode(&mut (*tag).as_slice()) {
+				let relay_tag: RelayTag = r_t;
+				for k in self.wanted_tags.keys() {
+					if let Some(t) = Decode::decode(&mut (*k).as_slice()) {
+						let r_t: RelayTag = t;
+						if r_t.shard_num == relay_tag.shard_num && r_t.height < relay_tag.height {
+							ext_tags.push(k.clone());
+						}
+					}
+				}
+				for t in ext_tags {
+					if let Some(hashes) = self.wanted_tags.remove(&t) {
+						for h in hashes{
+							self.waiting.remove(&h).expect(WAITING_PROOF);
+						}
+					}
+				}
+			} else {
+				// nothing to do
+			}
+
+		}
 	}
 
 	/// Removes transactions for given list of hashes.
