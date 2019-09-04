@@ -418,6 +418,8 @@ impl<B: ChainApi> Pool<B> {
 		self.pool.read().status()
 	}
 
+	/// Import provides from outside
+	/// now just for relay transfer
 	pub fn import_provides(&self, tags: impl IntoIterator<Item=Tag>) {
 		self.pool.write().import_provides(tags);
 	}

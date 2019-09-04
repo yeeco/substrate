@@ -174,30 +174,61 @@ impl<Hash: hash::Hash + Eq + Clone, Ex> FutureTransactions<Hash, Ex> {
 		let mut became_ready = vec![];
 
 		for tag in tags {
-			if let Some(hashes) = self.wanted_tags.remove(tag.as_ref()) {
-				for hash in hashes {
-					let is_ready = {
-						let tx = self.waiting.get_mut(&hash).expect(WAITING_PROOF);
-						tx.satisfy_tag(tag.as_ref());
-						tx.is_ready()
-					};
-
-					if is_ready {
-						let tx = self.waiting.remove(&hash).expect(WAITING_PROOF);
-						became_ready.push(tx);
+            let t = tag.as_ref();
+            let mut ext_tags = vec![];
+			{
+				if let Some(r_t) = Decode::decode(&mut (*t).as_slice()) {
+					ext_tags.push((*t).clone());
+					let relay_tag: RelayTag = r_t;
+					let mut par_tag = self.get_parent_tag(&relay_tag);
+					while par_tag.is_some() {
+						if let Some((t, r_t)) = par_tag {
+							ext_tags.push((*t).clone());
+							par_tag = self.get_parent_tag(&r_t);
+						}
 					}
+				} else {
+					ext_tags.push((*t).clone());
 				}
 			}
+            for tag in ext_tags {
+                if let Some(hashes) = self.wanted_tags.remove(&tag) {
+                    for hash in hashes {
+                        let is_ready = {
+                            let tx = self.waiting.get_mut(&hash).expect(WAITING_PROOF);
+                            tx.satisfy_tag(&tag);
+                            tx.is_ready()
+                        };
+
+                        if is_ready {
+                            let tx = self.waiting.remove(&hash).expect(WAITING_PROOF);
+                            became_ready.push(tx);
+                        }
+                    }
+                }
+            }
 		}
 
 		became_ready
 	}
+	/// get tag by parent hash
+    fn get_parent_tag(& self, tag: &RelayTag) -> Option<(&Tag, RelayTag)>{
+        for k in self.wanted_tags.keys(){
+            if let Some(r_t) = Decode::decode(&mut (*k).as_slice()) {
+                let r_t: RelayTag = r_t;
+                if tag.shard_num == r_t.shard_num && tag.parent_hash == r_t.hash{
+                    return Some((k, r_t));
+                }
+            }
+        }
+        None
+    }
 
 	/// Remove provided tags in future vector
 	/// now just for relay transfer
 	///
 	/// Returns null
-	pub fn remove_tags<T: AsRef<Tag>>(&mut self, tags: impl IntoIterator<Item=T>) {
+	pub fn remove_stale<T: AsRef<Tag>>(&mut self, tags: impl IntoIterator<Item=T>) {
 		for tag in tags {
 			let tag= tag.as_ref();
 			let mut ext_tags = vec![];
@@ -206,7 +237,7 @@ impl<Hash: hash::Hash + Eq + Clone, Ex> FutureTransactions<Hash, Ex> {
 				for k in self.wanted_tags.keys() {
 					if let Some(t) = Decode::decode(&mut (*k).as_slice()) {
 						let r_t: RelayTag = t;
-						if r_t.shard_num == relay_tag.shard_num && r_t.height < relay_tag.height {
+						if r_t.shard_num == relay_tag.shard_num && r_t.height <= relay_tag.height {
 							ext_tags.push(k.clone());
 						}
 					}
