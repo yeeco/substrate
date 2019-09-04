@@ -39,6 +39,7 @@ use sr_primitives::transaction_validity::{
 use crate::error;
 use crate::future::{FutureTransactions, WaitingTransaction};
 use crate::ready::ReadyTransactions;
+use crate::relay::RelayTag;
 
 /// Successful import result.
 #[derive(Debug, PartialEq, Eq)]
@@ -410,6 +411,22 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: ::std::fmt::Debug> BasePool<Hash
 			ready_bytes: self.ready.bytes(),
 			future: self.future.len(),
 			future_bytes: self.future.bytes(),
+		}
+	}
+
+	/// Import new provides from outside
+	pub fn import_provides(&mut self, tags: impl IntoIterator<Item=Tag>) {
+		let mut to_import = vec![];
+		for tag in tags {
+			to_import.append(&mut self.future.satisfy_tags(::std::iter::once(&tag)));
+		}
+		for tx in to_import{
+			match self.import_to_ready(tx){
+				Ok(_res)=>{ /* not deal */ },
+				Err(e)=>{
+					warn!(target: "txpool", "import relay transfer failed: {:?}", e);
+				},
+			}
 		}
 	}
 }

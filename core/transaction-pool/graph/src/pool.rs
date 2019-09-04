@@ -39,6 +39,7 @@ use sr_primitives::{
 };
 
 pub use crate::base_pool::Limit;
+pub use crate::relay::RelayTag;
 
 /// Modification notification event stream type;
 pub type EventStream = mpsc::UnboundedReceiver<()>;
@@ -415,6 +416,12 @@ impl<B: ChainApi> Pool<B> {
 	/// Returns pool status.
 	pub fn status(&self) -> base::Status {
 		self.pool.read().status()
+	}
+
+	pub fn import_provides(&self, tags: impl IntoIterator<Item=Tag>) {
+		self.pool.write().import_provides(tags);
+		// clear stale
+		// todo
 	}
 
 	/// Returns transaction hash
