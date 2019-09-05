@@ -517,7 +517,7 @@ impl<Components: components::Components> Service<Components> {
 			exit,
 			signal: Some(signal),
 			config,
-			_rpc: Box::new(None),
+			_rpc: Box::new(()),
 			_telemetry: None,
 			_offchain_workers: None
 		})
