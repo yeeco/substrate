@@ -28,7 +28,7 @@ use crate::rotator::PoolRotator;
 use crate::watcher::Watcher;
 use serde::Serialize;
 use error_chain::bail;
-use log::debug;
+use log::{debug, info};
 
 use futures::sync::mpsc;
 use parking_lot::{Mutex, RwLock};
