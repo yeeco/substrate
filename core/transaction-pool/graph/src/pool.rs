@@ -152,6 +152,7 @@ impl<B: ChainApi> Pool<B> {
 				}
 			})
 			.map(|tx| {
+				info!(target:"pool", "import a tx to pool");
 				let imported = self.pool.write().import(tx?)?;
 
 				if let base::Imported::Ready { .. } = imported {
