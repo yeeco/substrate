@@ -258,7 +258,7 @@ impl<B: ChainApi> Pool<B> {
 				}
 			}
 		}
-		self.pool.write().remove_invalid(relay_hashes.as_slice());
+		self.pool.write().remove_packed_transactions(relay_hashes.as_slice());
 		self.prune_tags(at, tags, in_pool.into_iter().filter_map(|x| x).map(|x| x.hash.clone()))?;
 
 		Ok(())

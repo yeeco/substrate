@@ -362,6 +362,10 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: ::std::fmt::Debug> BasePool<Hash
 		removed
 	}
 
+	pub fn remove_packed_transactions(&mut self, hashes: &[Hash]) {
+		self.remove_invalid(hashes);
+	}
+
 	/// Prunes transactions that provide given list of tags.
 	///
 	/// This will cause all transactions that provide these tags to be removed from the pool,
