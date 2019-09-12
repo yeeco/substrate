@@ -226,6 +226,7 @@ impl<B: ChainApi> Pool<B> {
 		let mut tags = Vec::with_capacity(extrinsics.len());
 		// Get details of all extrinsics that are already in the pool
 		let hashes = extrinsics.iter().map(|extrinsic| self.api.hash_and_length(extrinsic).0).collect::<Vec<_>>();
+		let mut relay_hashes = vec![];
 		let in_pool = self.pool.read().by_hash(&hashes);
 		{
 			// Zip the ones from the pool with the full list (we get pairs `(Extrinsic, Option<TransactionDetails>)`)
@@ -235,7 +236,11 @@ impl<B: ChainApi> Pool<B> {
 				match *existing_in_pool {
 					// reuse the tags for extrinsis that were found in the pool
 					Some(ref transaction) => {
-						tags.extend(transaction.provides.iter().cloned());
+						if transaction.provides.len() == 0 {
+							relay_hashes.push(transaction.hash.clone());
+						} else {
+							tags.extend(transaction.provides.iter().cloned());
+						}
 					},
 					// if it's not found in the pool query the runtime at parent block
 					// to get validity info and tags that the extrinsic provides.
@@ -253,7 +258,7 @@ impl<B: ChainApi> Pool<B> {
 				}
 			}
 		}
-
+		self.pool.write().remove_invalid(relay_hashes.as_slice());
 		self.prune_tags(at, tags, in_pool.into_iter().filter_map(|x| x).map(|x| x.hash.clone()))?;
 
 		Ok(())
