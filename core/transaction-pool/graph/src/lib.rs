@@ -29,7 +29,6 @@ mod listener;
 mod pool;
 mod ready;
 mod rotator;
-mod relay;
 
 pub mod base_pool;
 pub mod error;

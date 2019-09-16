@@ -27,9 +27,15 @@ use sr_primitives::transaction_validity::{
 	TransactionTag as Tag,
 };
 use parity_codec::Decode;
-use crate::relay::RelayTag;
+use parity_codec::Compact;
 
 use crate::base_pool::Transaction;
+
+/// 0: shard_num
+/// 1: number
+/// 2: hash
+/// 3: parent_hash
+pub type RelayTag = (Compact<u32>, Compact<u32>, Vec<u8>, Vec<u8>);
 
 /// Transaction with partially satisfied dependencies.
 pub struct WaitingTransaction<Hash, Ex> {
@@ -216,7 +222,7 @@ impl<Hash: hash::Hash + Eq + Clone, Ex> FutureTransactions<Hash, Ex> {
         for k in self.wanted_tags.keys(){
             if let Some(r_t) = Decode::decode(&mut (*k).as_slice()) {
                 let r_t: RelayTag = r_t;
-                if tag.shard_num == r_t.shard_num && tag.parent_hash == r_t.hash{
+                if tag.0 == r_t.0 && tag.3 == r_t.2{
                     return Some((k, r_t));
                 }
             }
@@ -237,7 +243,7 @@ impl<Hash: hash::Hash + Eq + Clone, Ex> FutureTransactions<Hash, Ex> {
 				for k in self.wanted_tags.keys() {
 					if let Some(t) = Decode::decode(&mut (*k).as_slice()) {
 						let r_t: RelayTag = t;
-						if r_t.shard_num == relay_tag.shard_num && r_t.height <= relay_tag.height {
+						if r_t.0 == relay_tag.0 && r_t.1 <= relay_tag.1 {
 							ext_tags.push(k.clone());
 						}
 					}

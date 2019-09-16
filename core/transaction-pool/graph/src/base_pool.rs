@@ -39,7 +39,6 @@ use sr_primitives::transaction_validity::{
 use crate::error;
 use crate::future::{FutureTransactions, WaitingTransaction};
 use crate::ready::ReadyTransactions;
-use crate::relay::RelayTag;
 
 /// Successful import result.
 #[derive(Debug, PartialEq, Eq)]
@@ -362,7 +361,7 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: ::std::fmt::Debug> BasePool<Hash
 		removed
 	}
 
-	pub fn remove_packed_transactions(&mut self, hashes: &[Hash]) {
+	pub fn remove_transactions(&mut self, hashes: &[Hash]) {
 		self.remove_invalid(hashes);
 	}
 
