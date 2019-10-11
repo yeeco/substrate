@@ -21,7 +21,7 @@ use std::{sync::{Weak, Arc}, collections::HashMap};
 use futures::{Future, IntoFuture};
 use parking_lot::Mutex;
 
-use runtime_primitives::{Justification, generic::BlockId};
+use runtime_primitives::{Justification, generic::BlockId, ForeignProof};
 use runtime_primitives::traits::{Block as BlockT, Header as HeaderT, NumberFor, Zero};
 use consensus::well_known_cache_keys;
 
@@ -150,6 +150,11 @@ impl<S, F, Block> BlockchainBackend<Block> for Blockchain<S, F> where Block: Blo
 	}
 
 	fn justification(&self, _id: BlockId<Block>) -> ClientResult<Option<Justification>> {
+		Ok(None)
+	}
+
+	fn foreign_proof(&self, id: BlockId<Block>) -> ClientResult<Option<ForeignProof>> {
+		// todo
 		Ok(None)
 	}
 

@@ -45,7 +45,7 @@ use trie::{MemoryDB, PrefixedMemoryDB, prefixed_key};
 use parking_lot::{Mutex, RwLock};
 use primitives::{H256, Blake2Hasher, ChangesTrieConfiguration, convert_hash};
 use primitives::storage::well_known_keys;
-use runtime_primitives::{generic::BlockId, Justification, StorageOverlay, ChildrenStorageOverlay};
+use runtime_primitives::{generic::BlockId, Justification, StorageOverlay, ChildrenStorageOverlay, ForeignProof};
 use runtime_primitives::traits::{Block as BlockT, Header as HeaderT, As, NumberFor, Zero, Digest, DigestItem};
 use runtime_primitives::BuildStorage;
 use state_machine::backend::Backend as StateBackend;
@@ -108,6 +108,7 @@ mod columns {
 	pub const JUSTIFICATION: Option<u32> = Some(6);
 	pub const CHANGES_TRIE: Option<u32> = Some(7);
 	pub const AUX: Option<u32> = Some(8);
+	pub const FOREIGN_PROOF: Option<u32> = Some(9);
 }
 
 struct PendingBlock<Block: BlockT> {
@@ -239,6 +240,11 @@ impl<Block: BlockT> client::blockchain::Backend<Block> for BlockchainDb<Block> {
 			}
 			None => Ok(None),
 		}
+	}
+
+	fn foreign_proof(&self, id: BlockId<Block>) -> Result<Option<ForeignProof>, client::error::Error> {
+		// todo
+		Ok(None)
 	}
 
 	fn last_finalized(&self) -> Result<Block::Hash, client::error::Error> {
@@ -964,6 +970,25 @@ impl<Block: BlockT<Hash=H256>> Backend<Block> {
 		Ok(())
 	}
 
+	fn write_foreign_proof<Number>(&self, hash: Block::Hash, number: Number, proof: Vec<u8>) where
+		Number: As<u64>,
+	{
+		// blocks are keyed by number + hash.
+		let lookup_key = utils::number_and_hash_to_lookup_key(number, hash);
+		let mut transaction = DBTransaction::new();
+		transaction.put(columns::FOREIGN_PROOF, &lookup_key, proof.as_slice());
+		self.storage.db.write(transaction).map_err(db_err);
+	}
+
+	fn read_foreign_proof(&self, id: BlockId<Block>) -> client::error::Result<Option<Vec<u8>>> {
+		match read_db(&*(self.blockchain.db), columns::KEY_LOOKUP, columns::FOREIGN_PROOF, id)? {
+			Some(proof) => match Decode::decode(&mut &proof[..]) {
+				Some(proof) => Ok(Some(proof)),
+				None => return Err(client::error::ErrorKind::Backend("Error decoding foreign proof".into()).into()),
+			}
+			None => Ok(None),
+		}
+	}
 
 	// write stuff to a transaction after a new block is finalized.
 	// this canonicalizes finalized blocks. Fails if called with a block which

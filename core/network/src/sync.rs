@@ -26,7 +26,7 @@ use consensus::BlockOrigin;
 use consensus::import_queue::{ImportQueue, IncomingBlock};
 use client::error::Error as ClientError;
 use crate::blocks::BlockCollection;
-use runtime_primitives::Justification;
+use runtime_primitives::{Justification, ForeignProof};
 use runtime_primitives::traits::{Block as BlockT, Header as HeaderT, As, NumberFor, Zero, CheckedSub};
 use runtime_primitives::generic::BlockId;
 use crate::message;
@@ -340,6 +340,17 @@ impl<B: BlockT> PendingJustifications<B> {
 	}
 }
 
+/// Pending ForeignProof request for the given block (hash and number).
+type PendingForeignProof<B> = (<B as BlockT>::Hash, NumberFor<B>);
+
+struct PendingForeignProofs<B: BlockT>{
+	foreign_proofs: ForkTree<B::Hash, NumberFor<B>, ()>,
+	pending_requests: VecDeque<PendingForeignProof<B>>,
+	peer_requests: HashMap<PeerId, PendingForeignProof<B>>,
+	previous_requests: HashMap<PendingForeignProof<B>, Vec<(PeerId, Instant)>>,
+	importing_requests: HashSet<PendingForeignProof<B>>,
+}
+
 /// Relay chain sync strategy.
 pub struct ChainSync<B: BlockT> {
 	genesis_hash: B::Hash,
@@ -616,6 +627,7 @@ impl<B: BlockT> ChainSync<B> {
 								body: block_data.block.body,
 								justification: block_data.block.justification,
 								origin: block_data.origin,
+								proof: block_data.block.proof,
 							}
 						}).collect()
 				},
@@ -628,6 +640,7 @@ impl<B: BlockT> ChainSync<B> {
 							body: b.body,
 							justification: b.justification,
 							origin: Some(who.clone()),
+							proof: b.proof,
 						}
 					}).collect()
 				},
@@ -740,6 +753,15 @@ impl<B: BlockT> ChainSync<B> {
 		}
 
 		self.maintain_sync(protocol);
+	}
+
+	pub(crate) fn on_block_proof_data(
+		&mut self,
+		protocol: &mut Context<B>,
+		who: PeerId,
+		_request: message::BlockRequest<B>,
+		response: message::BlockResponse<B>,){
+		// todo
 	}
 
 	/// A batch of blocks have been processed, with or without errors.
