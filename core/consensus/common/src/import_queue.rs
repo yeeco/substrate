@@ -36,7 +36,7 @@ use std::thread;
 use runtime_primitives::traits::{
 	AuthorityIdFor, Block as BlockT, Header as HeaderT, NumberFor
 };
-use runtime_primitives::{Justification, ForeignProof};
+use runtime_primitives::{Justification, Proof};
 
 use crate::error::Error as ConsensusError;
 use parity_codec::alloc::collections::hash_map::HashMap;
@@ -64,7 +64,7 @@ pub struct IncomingBlock<B: BlockT> {
 	/// The peer, we received this from
 	pub origin: Option<Origin>,
 	/// ForeignProof if requested.
-	pub proof: Option<ForeignProof>,
+	pub proof: Option<Proof>,
 }
 
 /// Verify a justification of a block

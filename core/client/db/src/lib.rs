@@ -45,7 +45,7 @@ use trie::{MemoryDB, PrefixedMemoryDB, prefixed_key};
 use parking_lot::{Mutex, RwLock};
 use primitives::{H256, Blake2Hasher, ChangesTrieConfiguration, convert_hash};
 use primitives::storage::well_known_keys;
-use runtime_primitives::{generic::BlockId, Justification, StorageOverlay, ChildrenStorageOverlay, ForeignProof};
+use runtime_primitives::{generic::BlockId, Justification, StorageOverlay, ChildrenStorageOverlay, Proof};
 use runtime_primitives::traits::{Block as BlockT, Header as HeaderT, As, NumberFor, Zero, Digest, DigestItem};
 use runtime_primitives::BuildStorage;
 use state_machine::backend::Backend as StateBackend;
@@ -242,7 +242,7 @@ impl<Block: BlockT> client::blockchain::Backend<Block> for BlockchainDb<Block> {
 		}
 	}
 
-	fn foreign_proof(&self, id: BlockId<Block>) -> Result<Option<ForeignProof>, client::error::Error> {
+	fn proof(&self, id: BlockId<Block>) -> Result<Option<Proof>, client::error::Error> {
 		// todo
 		Ok(None)
 	}

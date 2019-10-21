@@ -23,7 +23,7 @@ use primitives::{ChangesTrieConfiguration, storage::well_known_keys};
 use runtime_primitives::generic::BlockId;
 use runtime_primitives::traits::{Block as BlockT, Header as HeaderT, Zero,
 	NumberFor, As, Digest, DigestItem};
-use runtime_primitives::{Justification, StorageOverlay, ChildrenStorageOverlay, ForeignProof};
+use runtime_primitives::{Justification, StorageOverlay, ChildrenStorageOverlay, Proof};
 use state_machine::backend::{Backend as StateBackend, InMemory, Consolidate};
 use state_machine::{self, InMemoryChangesTrieStorage, ChangesTrieAnchorBlockId};
 use hash_db::Hasher;
@@ -67,6 +67,11 @@ impl<B: BlockT> StoredBlock<B> {
 		match *self {
 			StoredBlock::Header(_, ref j) | StoredBlock::Full(_, ref j) => j.as_ref()
 		}
+	}
+
+	fn proof(&self) -> Option<&Proof> {
+		// todo
+		None
 	}
 
 	fn extrinsics(&self) -> Option<&[B::Extrinsic]> {
@@ -338,7 +343,7 @@ impl<Block: BlockT> blockchain::Backend<Block> for Blockchain<Block> {
 		))
 	}
 
-	fn foreign_proof(&self, id: BlockId<Block>) -> error::Result<Option<ForeignProof>> {
+	fn proof(&self, id: BlockId<Block>) -> error::Result<Option<Proof>> {
 		// todo
 		Ok(None)
 	}

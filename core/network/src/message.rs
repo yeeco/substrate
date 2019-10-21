@@ -128,7 +128,7 @@ pub struct RemoteReadResponse {
 pub mod generic {
 	use parity_codec::{Encode, Decode};
 	use network_libp2p::CustomMessage;
-	use runtime_primitives::{Justification, ForeignProof};
+	use runtime_primitives::{Justification, Proof};
 	use crate::config::Roles;
 	use super::{
 		BlockAttributes, RemoteCallResponse, RemoteReadResponse,
@@ -159,7 +159,7 @@ pub mod generic {
 		/// Justification if requested.
 		pub justification: Option<Justification>,
 		/// ForeignProof if requested.
-		pub proof: Option<ForeignProof>,
+		pub proof: Option<Proof>,
 	}
 
 	/// Identifies starting point of a block sequence.

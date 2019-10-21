@@ -23,6 +23,7 @@ use parking_lot::{Mutex, RwLock};
 use primitives::NativeOrEncoded;
 use runtime_primitives::{
 	Justification,
+	Proof,
 	generic::{BlockId, SignedBlock},
 };
 use consensus::{
@@ -1097,6 +1098,11 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 	/// Get block justification set by id.
 	pub fn justification(&self, id: &BlockId<Block>) -> error::Result<Option<Justification>> {
 		self.backend.blockchain().justification(*id)
+	}
+
+	/// Get block proof set by id.
+	pub fn proof(&self, id: &BlockId<Block>) -> error::Result<Option<Proof>> {
+		self.backend.blockchain().proof(*id)
 	}
 
 	/// Get full block by id.
