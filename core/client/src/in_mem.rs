@@ -44,49 +44,50 @@ struct PendingBlock<B: BlockT> {
 
 #[derive(PartialEq, Eq, Clone)]
 enum StoredBlock<B: BlockT> {
-	Header(B::Header, Option<Justification>),
-	Full(B, Option<Justification>),
+	Header(B::Header, Option<Justification>, Option<Proof>),
+	Full(B, Option<Justification>, Option<Proof>),
 }
 
 impl<B: BlockT> StoredBlock<B> {
-	fn new(header: B::Header, body: Option<Vec<B::Extrinsic>>, just: Option<Justification>) -> Self {
+	fn new(header: B::Header, body: Option<Vec<B::Extrinsic>>, just: Option<Justification>, proof: Option<Proof>) -> Self {
 		match body {
-			Some(body) => StoredBlock::Full(B::new(header, body), just),
-			None => StoredBlock::Header(header, just),
+			Some(body) => StoredBlock::Full(B::new(header, body), just, proof),
+			None => StoredBlock::Header(header, just, proof),
 		}
 	}
 
 	fn header(&self) -> &B::Header {
 		match *self {
-			StoredBlock::Header(ref h, _) => h,
-			StoredBlock::Full(ref b, _) => b.header(),
+			StoredBlock::Header(ref h, _, _) => h,
+			StoredBlock::Full(ref b, _, _) => b.header(),
 		}
 	}
 
 	fn justification(&self) -> Option<&Justification> {
 		match *self {
-			StoredBlock::Header(_, ref j) | StoredBlock::Full(_, ref j) => j.as_ref()
+			StoredBlock::Header(_, ref j, _) | StoredBlock::Full(_, ref j, _) => j.as_ref()
 		}
 	}
 
 	fn proof(&self) -> Option<&Proof> {
-		// todo
-		None
+		match *self {
+			StoredBlock::Header(_, _, ref p) | StoredBlock::Full(_, _, ref p) => p.as_ref()
+		}
 	}
 
 	fn extrinsics(&self) -> Option<&[B::Extrinsic]> {
 		match *self {
-			StoredBlock::Header(_, _) => None,
-			StoredBlock::Full(ref b, _) => Some(b.extrinsics()),
+			StoredBlock::Header(_, _, _) => None,
+			StoredBlock::Full(ref b, _, _) => Some(b.extrinsics()),
 		}
 	}
 
-	fn into_inner(self) -> (B::Header, Option<Vec<B::Extrinsic>>, Option<Justification>) {
+	fn into_inner(self) -> (B::Header, Option<Vec<B::Extrinsic>>, Option<Justification>, Option<Proof>) {
 		match self {
-			StoredBlock::Header(header, just) => (header, None, just),
-			StoredBlock::Full(block, just) => {
+			StoredBlock::Header(header, just, proof) => (header, None, just, proof),
+			StoredBlock::Full(block, just, proof) => {
 				let (header, body) = block.deconstruct();
-				(header, Some(body), just)
+				(header, Some(body), just, proof)
 			}
 		}
 	}
@@ -157,6 +158,7 @@ impl<Block: BlockT> Blockchain<Block> {
 		hash: Block::Hash,
 		header: <Block as BlockT>::Header,
 		justification: Option<Justification>,
+		proof: Option<Proof>,
 		body: Option<Vec<<Block as BlockT>::Extrinsic>>,
 		new_state: NewBlockState,
 	) -> crate::error::Result<()> {
@@ -168,10 +170,10 @@ impl<Block: BlockT> Blockchain<Block> {
 		{
 			let mut storage = self.storage.write();
 			storage.leaves.import(hash.clone(), number.clone(), header.parent_hash().clone());
-			storage.blocks.insert(hash.clone(), StoredBlock::new(header, body, justification));
+			storage.blocks.insert(hash.clone(), StoredBlock::new(header, body, justification, proof));
 
 			if let NewBlockState::Final = new_state {
-				storage.finalized_hash = hash;
+				storage.finalized_hash = hash.clone();
 				storage.finalized_number = number.clone();
 			}
 
@@ -260,7 +262,7 @@ impl<Block: BlockT> Blockchain<Block> {
 		Ok(())
 	}
 
-	fn finalize_header(&self, id: BlockId<Block>, justification: Option<Justification>) -> error::Result<()> {
+	fn finalize_header(&self, id: BlockId<Block>, justification: Option<Justification>, proof: Option<Proof>) -> error::Result<()> {
 		let hash = match self.header(id)? {
 			Some(h) => h.hash(),
 			None => return Err(error::ErrorKind::UnknownBlock(format!("{}", id)).into()),
@@ -274,10 +276,15 @@ impl<Block: BlockT> Blockchain<Block> {
 				.expect("hash was fetched from a block in the db; qed");
 
 			let block_justification = match block {
-				StoredBlock::Header(_, ref mut j) | StoredBlock::Full(_, ref mut j) => j
+				StoredBlock::Header(_, ref mut j, _) | StoredBlock::Full(_, ref mut j, _) => j
 			};
 
 			*block_justification = justification;
+
+			let block_proof = match block {
+				StoredBlock::Header(_, _, ref mut p) | StoredBlock::Full(_, _, ref mut p) => p
+			};
+			*block_proof = proof;
 		}
 
 		Ok(())
@@ -344,8 +351,9 @@ impl<Block: BlockT> blockchain::Backend<Block> for Blockchain<Block> {
 	}
 
 	fn proof(&self, id: BlockId<Block>) -> error::Result<Option<Proof>> {
-		// todo
-		Ok(None)
+		Ok(self.id(id).and_then(|hash| self.storage.read().blocks.get(&hash).and_then(|b|
+			b.proof().map(|x| x.clone()))
+		))
 	}
 
 	fn last_finalized(&self) -> error::Result<Block::Hash> {
@@ -406,7 +414,7 @@ impl<Block: BlockT> light::blockchain::Storage<Block> for Blockchain<Block>
 		aux_ops: Vec<(Vec<u8>, Option<Vec<u8>>)>,
 	) -> error::Result<()> {
 		let hash = header.hash();
-		self.insert(hash, header, None, None, state)?;
+		self.insert(hash, header, None, None, None, state)?;
 
 		self.write_aux(aux_ops);
 		Ok(())
@@ -421,7 +429,7 @@ impl<Block: BlockT> light::blockchain::Storage<Block> for Blockchain<Block>
 	}
 
 	fn finalize_header(&self, id: BlockId<Block>) -> error::Result<()> {
-		Blockchain::finalize_header(self, id, None)
+		Blockchain::finalize_header(self, id, None, None)
 	}
 
 	fn header_cht_root(&self, _cht_size: u64, block: NumberFor<Block>) -> error::Result<Block::Hash> {
@@ -447,7 +455,7 @@ pub struct BlockImportOperation<Block: BlockT, H: Hasher> {
 	new_state: Option<InMemory<H>>,
 	changes_trie_update: Option<MemoryDB<H>>,
 	aux: Vec<(Vec<u8>, Option<Vec<u8>>)>,
-	finalized_blocks: Vec<(BlockId<Block>, Option<Justification>)>,
+	finalized_blocks: Vec<(BlockId<Block>, Option<Justification>, Option<Proof>)>,
 	set_head: Option<BlockId<Block>>,
 }
 
@@ -469,11 +477,12 @@ where
 		header: <Block as BlockT>::Header,
 		body: Option<Vec<<Block as BlockT>::Extrinsic>>,
 		justification: Option<Justification>,
+		proof: Option<Proof>,
 		state: NewBlockState,
 	) -> error::Result<()> {
 		assert!(self.pending_block.is_none(), "Only one block per operation is allowed");
 		self.pending_block = Some(PendingBlock {
-			block: StoredBlock::new(header, body, justification),
+			block: StoredBlock::new(header, body, justification, proof),
 			state,
 		});
 		Ok(())
@@ -525,8 +534,8 @@ where
 		Ok(())
 	}
 
-	fn mark_finalized(&mut self, block: BlockId<Block>, justification: Option<Justification>) -> error::Result<()> {
-		self.finalized_blocks.push((block, justification));
+	fn mark_finalized(&mut self, block: BlockId<Block>, justification: Option<Justification>, proof: Option<Proof>) -> error::Result<()> {
+		self.finalized_blocks.push((block, justification, proof));
 		Ok(())
 	}
 
@@ -618,14 +627,14 @@ where
 
 	fn commit_operation(&self, operation: Self::BlockImportOperation) -> error::Result<()> {
 		if !operation.finalized_blocks.is_empty() {
-			for (block, justification) in operation.finalized_blocks {
-				self.blockchain.finalize_header(block, justification)?;
+			for (block, justification, proof) in operation.finalized_blocks {
+				self.blockchain.finalize_header(block, justification, proof)?;
 			}
 		}
 
 		if let Some(pending_block) = operation.pending_block {
 			let old_state = &operation.old_state;
-			let (header, body, justification) = pending_block.block.into_inner();
+			let (header, body, justification, proof) = pending_block.block.into_inner();
 
 			let hash = header.hash();
 
@@ -639,7 +648,7 @@ where
 				}
 			}
 
-			self.blockchain.insert(hash, header, justification, body, pending_block.state)?;
+			self.blockchain.insert(hash, header, justification, proof, body, pending_block.state)?;
 		}
 
 		if !operation.aux.is_empty() {
@@ -653,8 +662,8 @@ where
 		Ok(())
 	}
 
-	fn finalize_block(&self, block: BlockId<Block>, justification: Option<Justification>) -> error::Result<()> {
-		self.blockchain.finalize_header(block, justification)
+	fn finalize_block(&self, block: BlockId<Block>, justification: Option<Justification>, proof: Option<Proof>) -> error::Result<()> {
+		self.blockchain.finalize_header(block, justification, proof)
 	}
 
 	fn blockchain(&self) -> &Self::Blockchain {

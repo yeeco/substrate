@@ -108,12 +108,13 @@ mod columns {
 	pub const JUSTIFICATION: Option<u32> = Some(6);
 	pub const CHANGES_TRIE: Option<u32> = Some(7);
 	pub const AUX: Option<u32> = Some(8);
-	pub const FOREIGN_PROOF: Option<u32> = Some(9);
+	pub const PROOF: Option<u32> = Some(9);
 }
 
 struct PendingBlock<Block: BlockT> {
 	header: Block::Header,
 	justification: Option<Justification>,
+	proof: Option<Proof>,
 	body: Option<Vec<Block::Extrinsic>>,
 	leaf_state: NewBlockState,
 }
@@ -243,8 +244,10 @@ impl<Block: BlockT> client::blockchain::Backend<Block> for BlockchainDb<Block> {
 	}
 
 	fn proof(&self, id: BlockId<Block>) -> Result<Option<Proof>, client::error::Error> {
-		// todo
-		Ok(None)
+		match read_db(&*self.db, columns::KEY_LOOKUP, columns::PROOF, id)?{
+			Some(proof) => Ok(Some(proof.to_vec())),
+			None => Ok(None)
+		}
 	}
 
 	fn last_finalized(&self) -> Result<Block::Hash, client::error::Error> {
@@ -278,7 +281,7 @@ pub struct BlockImportOperation<Block: BlockT, H: Hasher> {
 	changes_trie_updates: MemoryDB<H>,
 	pending_block: Option<PendingBlock<Block>>,
 	aux_ops: Vec<(Vec<u8>, Option<Vec<u8>>)>,
-	finalized_blocks: Vec<(BlockId<Block>, Option<Justification>)>,
+	finalized_blocks: Vec<(BlockId<Block>, Option<Justification>, Option<Proof>)>,
 	set_head: Option<BlockId<Block>>,
 }
 
@@ -308,6 +311,7 @@ where Block: BlockT<Hash=H256>,
 		header: Block::Header,
 		body: Option<Vec<Block::Extrinsic>>,
 		justification: Option<Justification>,
+		proof: Option<Proof>,
 		leaf_state: NewBlockState,
 	) -> Result<(), client::error::Error> {
 		assert!(self.pending_block.is_none(), "Only one block per operation is allowed");
@@ -315,6 +319,7 @@ where Block: BlockT<Hash=H256>,
 			header,
 			body,
 			justification,
+			proof,
 			leaf_state,
 		});
 		Ok(())
@@ -374,8 +379,8 @@ where Block: BlockT<Hash=H256>,
 		Ok(())
 	}
 
-	fn mark_finalized(&mut self, block: BlockId<Block>, justification: Option<Justification>) -> Result<(), client::error::Error> {
-		self.finalized_blocks.push((block, justification));
+	fn mark_finalized(&mut self, block: BlockId<Block>, justification: Option<Justification>, proof: Option<Proof>) -> Result<(), client::error::Error> {
+		self.finalized_blocks.push((block, justification, proof));
 		Ok(())
 	}
 
@@ -618,6 +623,7 @@ impl<Block: BlockT<Hash=H256>> Backend<Block> {
 		for (number, hash, header) in headers {
 			let id = BlockId::Hash(hash);
 			let justification = self.blockchain.justification(id).unwrap();
+			let proof = self.blockchain.proof(id).unwrap();
 			let body = self.blockchain.body(id).unwrap();
 			let state = self.state_at(id).unwrap().pairs();
 
@@ -629,13 +635,13 @@ impl<Block: BlockT<Hash=H256>> Backend<Block> {
 				NewBlockState::Normal
 			};
 			let mut op = inmem.begin_operation().unwrap();
-			op.set_block_data(header, body, justification, new_block_state).unwrap();
+			op.set_block_data(header, body, justification, proof, new_block_state).unwrap();
 			op.update_db_storage(state.into_iter().map(|(k, v)| (None, k, Some(v))).collect()).unwrap();
 			inmem.commit_operation(op).unwrap();
 		}
 
 		// and now finalize the best block we have
-		inmem.finalize_block(BlockId::Hash(info.finalized_hash), None).unwrap();
+		inmem.finalize_block(BlockId::Hash(info.finalized_hash), None, None).unwrap();
 
 		inmem
 	}
@@ -746,6 +752,7 @@ impl<Block: BlockT<Hash=H256>> Backend<Block> {
 		header: &Block::Header,
 		last_finalized: Option<Block::Hash>,
 		justification: Option<Justification>,
+		proof: Option<Proof>,
 		finalization_displaced: &mut Option<FinalizationDisplaced<Block::Hash, NumberFor<Block>>>,
 	) -> Result<(Block::Hash, <Block::Header as HeaderT>::Number, bool, bool), client::error::Error> {
 		// TODO: ensure best chain contains this block.
@@ -764,6 +771,14 @@ impl<Block: BlockT<Hash=H256>> Backend<Block> {
 				&utils::number_and_hash_to_lookup_key(number, hash),
 				&justification.encode(),
 			);
+		}
+
+		if let Some(proof) = proof {
+			transaction.put(
+				columns::PROOF,
+				&utils::number_and_hash_to_lookup_key(number, hash),
+				proof.as_slice(),
+			)
 		}
 		Ok((*hash, number, false, true))
 	}
@@ -814,7 +829,7 @@ impl<Block: BlockT<Hash=H256>> Backend<Block> {
 		let mut last_finalized_hash = self.blockchain.meta.read().finalized_hash;
 
 		if !operation.finalized_blocks.is_empty() {
-			for (block, justification) in operation.finalized_blocks {
+			for (block, justification, proof) in operation.finalized_blocks {
 				let block_hash = self.blockchain.expect_block_hash_from_id(&block)?;
 				let block_header = self.blockchain.expect_header(BlockId::Hash(block_hash))?;
 
@@ -824,6 +839,7 @@ impl<Block: BlockT<Hash=H256>> Backend<Block> {
 					&block_header,
 					Some(last_finalized_hash),
 					justification,
+					proof,
 					&mut finalization_displaced_leaves,
 				)?);
 				last_finalized_hash = block_hash;
@@ -976,12 +992,12 @@ impl<Block: BlockT<Hash=H256>> Backend<Block> {
 		// blocks are keyed by number + hash.
 		let lookup_key = utils::number_and_hash_to_lookup_key(number, hash);
 		let mut transaction = DBTransaction::new();
-		transaction.put(columns::FOREIGN_PROOF, &lookup_key, proof.as_slice());
+		transaction.put(columns::PROOF, &lookup_key, proof.as_slice());
 		self.storage.db.write(transaction).map_err(db_err);
 	}
 
 	fn read_foreign_proof(&self, id: BlockId<Block>) -> client::error::Result<Option<Vec<u8>>> {
-		match read_db(&*(self.blockchain.db), columns::KEY_LOOKUP, columns::FOREIGN_PROOF, id)? {
+		match read_db(&*(self.blockchain.db), columns::KEY_LOOKUP, columns::PROOF, id)? {
 			Some(proof) => match Decode::decode(&mut &proof[..]) {
 				Some(proof) => Ok(Some(proof)),
 				None => return Err(client::error::ErrorKind::Backend("Error decoding foreign proof".into()).into()),
@@ -1109,7 +1125,7 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 		}
 	}
 
-	fn finalize_block(&self, block: BlockId<Block>, justification: Option<Justification>)
+	fn finalize_block(&self, block: BlockId<Block>, justification: Option<Justification>, proof: Option<Proof>)
 		-> Result<(), client::error::Error>
 	{
 		let mut transaction = DBTransaction::new();
@@ -1123,6 +1139,7 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 				&header,
 				None,
 				justification,
+				proof,
 				displaced,
 			)?;
 			self.storage.db.write(transaction).map_err(db_err)?;
@@ -1297,7 +1314,7 @@ mod tests {
 		};
 		let mut op = backend.begin_operation().unwrap();
 		backend.begin_state_operation(&mut op, block_id).unwrap();
-		op.set_block_data(header, None, None, NewBlockState::Best).unwrap();
+		op.set_block_data(header, None, None, None, NewBlockState::Best).unwrap();
 		op.update_changes_trie(changes_trie_update).unwrap();
 		backend.commit_operation(op).unwrap();
 
@@ -1335,6 +1352,7 @@ mod tests {
 					op.set_block_data(
 						header,
 						Some(vec![]),
+						None,
 						None,
 						NewBlockState::Best,
 					).unwrap();
@@ -1384,6 +1402,7 @@ mod tests {
 				header.clone(),
 				Some(vec![]),
 				None,
+				None,
 				NewBlockState::Best,
 			).unwrap();
 
@@ -1421,6 +1440,7 @@ mod tests {
 			op.set_block_data(
 				header,
 				Some(vec![]),
+				None,
 				None,
 				NewBlockState::Best,
 			).unwrap();
@@ -1468,6 +1488,7 @@ mod tests {
 				header,
 				Some(vec![]),
 				None,
+				None,
 				NewBlockState::Best,
 			).unwrap();
 
@@ -1503,6 +1524,7 @@ mod tests {
 				header,
 				Some(vec![]),
 				None,
+				None,
 				NewBlockState::Best,
 			).unwrap();
 
@@ -1537,6 +1559,7 @@ mod tests {
 				header,
 				Some(vec![]),
 				None,
+				None,
 				NewBlockState::Best,
 			).unwrap();
 
@@ -1569,6 +1592,7 @@ mod tests {
 				header,
 				Some(vec![]),
 				None,
+				None,
 				NewBlockState::Best,
 			).unwrap();
 
@@ -1577,9 +1601,9 @@ mod tests {
 			assert!(backend.storage.db.get(columns::STATE, key.as_bytes()).unwrap().is_none());
 		}
 
-		backend.finalize_block(BlockId::Number(1), None).unwrap();
-		backend.finalize_block(BlockId::Number(2), None).unwrap();
-		backend.finalize_block(BlockId::Number(3), None).unwrap();
+		backend.finalize_block(BlockId::Number(1), None, None).unwrap();
+		backend.finalize_block(BlockId::Number(2), None, None).unwrap();
+		backend.finalize_block(BlockId::Number(3), None, None).unwrap();
 		assert!(backend.storage.db.get(columns::STATE, key.as_bytes()).unwrap().is_none());
 	}
 
@@ -1919,8 +1943,8 @@ mod tests {
 
 		assert_eq!(backend.blockchain().leaves().unwrap(), vec![block2_a, block2_b, block2_c, block1_c]);
 
-		backend.finalize_block(BlockId::hash(block1_a), None).unwrap();
-		backend.finalize_block(BlockId::hash(block2_a), None).unwrap();
+		backend.finalize_block(BlockId::hash(block1_a), None, None).unwrap();
+		backend.finalize_block(BlockId::hash(block2_a), None, None).unwrap();
 
 		// leaves at same height stay. Leaves at lower heights pruned.
 		assert_eq!(backend.blockchain().leaves().unwrap(), vec![block2_a, block2_b, block2_c]);
@@ -1946,7 +1970,7 @@ mod tests {
 		let _ = insert_header(&backend, 1, block0, Default::default(), Default::default());
 
 		let justification = Some(vec![1, 2, 3]);
-		backend.finalize_block(BlockId::Number(1), justification.clone()).unwrap();
+		backend.finalize_block(BlockId::Number(1), justification.clone(), None).unwrap();
 
 		assert_eq!(
 			backend.blockchain().justification(BlockId::Number(1)).unwrap(),

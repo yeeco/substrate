@@ -292,6 +292,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 				genesis_block.deconstruct().0,
 				Some(vec![]),
 				None,
+				None,
 				crate::backend::NewBlockState::Final
 			)?;
 			backend.commit_operation(op)?;
@@ -683,6 +684,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 			origin,
 			header,
 			justification,
+			proof,
 			post_digests,
 			body,
 			finalized,
@@ -720,6 +722,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 			hash,
 			import_headers,
 			justification,
+			proof,
 			body,
 			new_cache,
 			finalized,
@@ -743,6 +746,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 		hash: Block::Hash,
 		import_headers: PrePostHeader<Block::Header>,
 		justification: Option<Justification>,
+		proof: Option<Proof>,
 		body: Option<Vec<Block::Extrinsic>>,
 		new_cache: HashMap<CacheKeyId, Vec<u8>>,
 		finalized: bool,
@@ -775,7 +779,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 		// ensure parent block is finalized to maintain invariant that
 		// finality is called sequentially.
 		if finalized {
-			self.apply_finality_with_block_hash(operation, parent_hash, None, last_best, make_notifications)?;
+			self.apply_finality_with_block_hash(operation, parent_hash, None, None, last_best, make_notifications)?;
 		}
 
 		// FIXME #1232: correct path logic for when to execute this function
@@ -799,6 +803,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 			import_headers.post().clone(),
 			body,
 			justification,
+			proof,
 			leaf_state,
 		)?;
 
@@ -890,6 +895,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 		operation: &mut ClientImportOperation<Block, Blake2Hasher, B>,
 		block: Block::Hash,
 		justification: Option<Justification>,
+		proof: Option<Proof>,
 		best_block: Block::Hash,
 		notify: bool,
 	) -> error::Result<()> {
@@ -930,11 +936,11 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 		let enacted = route_from_finalized.enacted();
 		assert!(enacted.len() > 0);
 		for finalize_new in &enacted[..enacted.len() - 1] {
-			operation.op.mark_finalized(BlockId::Hash(finalize_new.hash), None)?;
+			operation.op.mark_finalized(BlockId::Hash(finalize_new.hash), None, None)?;
 		}
 
 		assert_eq!(enacted.last().map(|e| e.hash), Some(block));
-		operation.op.mark_finalized(BlockId::Hash(block), justification)?;
+		operation.op.mark_finalized(BlockId::Hash(block), justification, proof)?;
 
 		if notify {
 			// sometimes when syncing, tons of blocks can be finalized at once.
@@ -1024,11 +1030,12 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 		operation: &mut ClientImportOperation<Block, Blake2Hasher, B>,
 		id: BlockId<Block>,
 		justification: Option<Justification>,
+		proof: Option<Proof>,
 		notify: bool,
 	) -> error::Result<()> {
 		let last_best = self.backend.blockchain().info()?.best_hash;
 		let to_finalize_hash = self.backend.blockchain().expect_block_hash_from_id(&id)?;
-		self.apply_finality_with_block_hash(operation, to_finalize_hash, justification, last_best, notify)
+		self.apply_finality_with_block_hash(operation, to_finalize_hash, justification, proof, last_best, notify)
 	}
 
 	/// Finalize a block. This will implicitly finalize all blocks up to it and
@@ -1037,11 +1044,11 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 	/// Pass a flag to indicate whether finality notifications should be propagated.
 	/// This is usually tied to some synchronization state, where we don't send notifications
 	/// while performing major synchronization work.
-	pub fn finalize_block(&self, id: BlockId<Block>, justification: Option<Justification>, notify: bool) -> error::Result<()> {
+	pub fn finalize_block(&self, id: BlockId<Block>, justification: Option<Justification>, proof: Option<Proof>, notify: bool) -> error::Result<()> {
 		self.lock_import_and_run(|operation| {
 			let last_best = self.backend.blockchain().info()?.best_hash;
 			let to_finalize_hash = self.backend.blockchain().expect_block_hash_from_id(&id)?;
-			self.apply_finality_with_block_hash(operation, to_finalize_hash, justification, last_best, notify)
+			self.apply_finality_with_block_hash(operation, to_finalize_hash, justification, proof, last_best, notify)
 		})
 	}
 

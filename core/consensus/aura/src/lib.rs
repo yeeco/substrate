@@ -400,6 +400,7 @@ impl<B: Block, C, E, I, P, Error, SO> SlotWorker<B> for AuraWorker<C, E, I, P, S
 						origin: BlockOrigin::Own,
 						header,
 						justification: None,
+						proof: None,
 						post_digests: vec![item],
 						body: Some(body),
 						finalized: false,
@@ -655,6 +656,7 @@ impl<B: Block, C, E, P> Verifier<B> for AuraVerifier<C, E, P> where
 					body,
 					finalized: false,
 					justification,
+					proof: None,
 					auxiliary: Vec::new(),
 					fork_choice: ForkChoiceStrategy::LongestChain,
 				};

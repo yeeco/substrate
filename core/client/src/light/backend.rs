@@ -22,7 +22,7 @@ use std::sync::{Arc, Weak};
 use futures::{Future, IntoFuture};
 use parking_lot::RwLock;
 
-use runtime_primitives::{generic::BlockId, Justification, StorageOverlay, ChildrenStorageOverlay};
+use runtime_primitives::{generic::BlockId, Justification, Proof, StorageOverlay, ChildrenStorageOverlay};
 use state_machine::{Backend as StateBackend, TrieBackend, backend::InMemory as InMemoryState};
 use runtime_primitives::traits::{Block as BlockT, NumberFor, Zero, Header};
 use crate::in_mem::{self, check_genesis_storage};
@@ -175,7 +175,7 @@ impl<S, F, Block, H> ClientBackend<Block, H> for Backend<S, F, H> where
 		Ok(())
 	}
 
-	fn finalize_block(&self, block: BlockId<Block>, _justification: Option<Justification>) -> ClientResult<()> {
+	fn finalize_block(&self, block: BlockId<Block>, _justification: Option<Justification>, _proof: Option<Proof>) -> ClientResult<()> {
 		self.blockchain.storage().finalize_header(block)
 	}
 
@@ -248,6 +248,7 @@ where
 		header: Block::Header,
 		_body: Option<Vec<Block::Extrinsic>>,
 		_justification: Option<Justification>,
+		_proof: Option<Proof>,
 		state: NewBlockState,
 	) -> ClientResult<()> {
 		self.leaf_state = state;
@@ -297,7 +298,7 @@ where
 		Ok(())
 	}
 
-	fn mark_finalized(&mut self, block: BlockId<Block>, _justification: Option<Justification>) -> ClientResult<()> {
+	fn mark_finalized(&mut self, block: BlockId<Block>, _justification: Option<Justification>, _proof: Option<Proof>) -> ClientResult<()> {
 		self.finalized_blocks.push(block);
 		Ok(())
 	}
@@ -343,13 +344,13 @@ where
 		Err(ClientErrorKind::NotAvailableOnLightClient.into())
 	}
 
-	fn for_keys_with_prefix<A: FnMut(&[u8])>(&self, _prefix: &[u8], _action: A) {
-		// whole state is not available on light node
-	}
+    fn for_keys_in_child_storage<A: FnMut(&[u8])>(&self, _storage_key: &[u8], _action: A) {
+        // whole state is not available on light node
+    }
 
-	fn for_keys_in_child_storage<A: FnMut(&[u8])>(&self, _storage_key: &[u8], _action: A) {
-		// whole state is not available on light node
-	}
+    fn for_keys_with_prefix<A: FnMut(&[u8])>(&self, _prefix: &[u8], _action: A) {
+        // whole state is not available on light node
+    }
 
 	fn storage_root<I>(&self, _delta: I) -> (H::Out, Self::Transaction)
 	where
@@ -493,7 +494,7 @@ mod tests {
 
 		let backend: Backend<_, _, Blake2Hasher> = Backend::new(Arc::new(DummyBlockchain::new(DummyStorage::new())));
 		let mut op = backend.begin_operation().unwrap();
-		op.set_block_data(header0, None, None, NewBlockState::Final).unwrap();
+		op.set_block_data(header0, None, None, None, NewBlockState::Final).unwrap();
 		op.reset_storage(Default::default(), Default::default()).unwrap();
 		backend.commit_operation(op).unwrap();
 

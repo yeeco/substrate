@@ -851,7 +851,7 @@ impl JustificationImport<Block> for ForceFinalized {
 		_number: NumberFor<Block>,
 		justification: Justification,
 	) -> Result<(), Self::Error> {
-		self.0.finalize_block(BlockId::Hash(hash), Some(justification), true)
+		self.0.finalize_block(BlockId::Hash(hash), Some(justification), None, true)
 			.map_err(|_| ConsensusErrorKind::InvalidJustification.into())
 	}
 }
