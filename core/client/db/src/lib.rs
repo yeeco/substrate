@@ -874,6 +874,9 @@ impl<Block: BlockT<Hash=H256>> Backend<Block> {
 			if let Some(justification) = pending_block.justification {
 				transaction.put(columns::JUSTIFICATION, &lookup_key, &justification.encode());
 			}
+            if let Some(proof) = pending_block.proof{
+                transaction.put(columns::PROOF, &lookup_key, &proof.encode());
+            }
 
 			if number.is_zero() {
 				transaction.put(columns::META, meta_keys::FINALIZED_BLOCK, &lookup_key);
