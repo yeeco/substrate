@@ -425,12 +425,12 @@ impl<Block: BlockT> light::blockchain::Storage<Block> for Blockchain<Block>
 		Blockchain::set_head(self, id)
 	}
 
-	fn last_finalized(&self) -> error::Result<Block::Hash> {
-		Ok(self.storage.read().finalized_hash.clone())
-	}
-
 	fn finalize_header(&self, id: BlockId<Block>) -> error::Result<()> {
 		Blockchain::finalize_header(self, id, None, None)
+	}
+
+	fn last_finalized(&self) -> error::Result<Block::Hash> {
+		Ok(self.storage.read().finalized_hash.clone())
 	}
 
 	fn header_cht_root(&self, _cht_size: u64, block: NumberFor<Block>) -> error::Result<Block::Hash> {
@@ -445,6 +445,21 @@ impl<Block: BlockT> light::blockchain::Storage<Block> for Blockchain<Block>
 
 	fn cache(&self) -> Option<Arc<blockchain::Cache<Block>>> {
 		None
+	}
+
+	fn proof(&self, id: &BlockId<Block>) -> Option<Proof> {
+		let hash = match id {
+			BlockId::Hash(h) => Some(*h),
+			BlockId::Number(n) => self.storage.read().hashes.get(&n).cloned(),
+		};
+		if let Some(h) = hash {
+			self.storage.read().blocks.get(&h).and_then(|b| match b {
+				StoredBlock::Header(_,_, proof) => (*proof).clone(),
+				StoredBlock::Full(_,_,proof) => (*proof).clone(),
+			})
+		} else{
+			None
+		}
 	}
 }
 

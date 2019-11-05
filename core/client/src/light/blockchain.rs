@@ -64,6 +64,9 @@ pub trait Storage<Block: BlockT>: AuxStore + BlockchainHeaderBackend<Block> {
 
 	/// Get storage cache.
 	fn cache(&self) -> Option<Arc<BlockchainCache<Block>>>;
+
+	/// Get proof of block.
+	fn proof(&self, id: &BlockId<Block>) -> Option<Proof>;
 }
 
 /// Light client blockchain.
@@ -155,8 +158,7 @@ impl<S, F, Block> BlockchainBackend<Block> for Blockchain<S, F> where Block: Blo
 	}
 
 	fn proof(&self, id: BlockId<Block>) -> ClientResult<Option<Proof>> {
-		// todo
-		Ok(None)
+		Ok(self.storage.proof(&id))
 	}
 
 	fn last_finalized(&self) -> ClientResult<Block::Hash> {
@@ -295,5 +297,7 @@ pub mod tests {
 		fn cache(&self) -> Option<Arc<BlockchainCache<Block>>> {
 			None
 		}
+
+		fn proof(&self, id: &BlockId<Block>) -> Option<Proof> { None }
 	}
 }

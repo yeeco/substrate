@@ -484,14 +484,6 @@ impl<Block> LightBlockchainStorage<Block> for LightStorage<Block>
 		}
 	}
 
-	fn header_cht_root(&self, cht_size: u64, block: NumberFor<Block>) -> ClientResult<Block::Hash> {
-		self.read_cht_root(HEADER_CHT_PREFIX, cht_size, block)
-	}
-
-	fn changes_trie_cht_root(&self, cht_size: u64, block: NumberFor<Block>) -> ClientResult<Block::Hash> {
-		self.read_cht_root(CHANGES_TRIE_CHT_PREFIX, cht_size, block)
-	}
-
 	fn finalize_header(&self, id: BlockId<Block>) -> ClientResult<()> {
 		if let Some(header) = self.header(id)? {
 			let mut displaced = None;
@@ -528,8 +520,28 @@ impl<Block> LightBlockchainStorage<Block> for LightStorage<Block>
 		Ok(self.meta.read().finalized_hash.clone())
 	}
 
+	fn header_cht_root(&self, cht_size: u64, block: NumberFor<Block>) -> ClientResult<Block::Hash> {
+		self.read_cht_root(HEADER_CHT_PREFIX, cht_size, block)
+	}
+
+	fn changes_trie_cht_root(&self, cht_size: u64, block: NumberFor<Block>) -> ClientResult<Block::Hash> {
+		self.read_cht_root(CHANGES_TRIE_CHT_PREFIX, cht_size, block)
+	}
+
 	fn cache(&self) -> Option<Arc<BlockchainCache<Block>>> {
 		Some(self.cache.clone())
+	}
+
+	fn proof(&self, id: &BlockId<Block>) -> Option<Proof> {
+		let res = read_db(&*self.db, columns::KEY_LOOKUP, columns::PROOF, *id);
+		if res.is_ok() {
+			match res.unwrap() {
+				Some(proof) => Some(proof.to_vec()),
+				None => None
+			}
+		} else {
+			None
+		}
 	}
 }
 
