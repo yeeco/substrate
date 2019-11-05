@@ -53,6 +53,7 @@ pub struct ImportOperation<Block: BlockT, S, F, H> {
 	finalized_blocks: Vec<BlockId<Block>>,
 	set_head: Option<BlockId<Block>>,
 	storage_update: Option<InMemoryState<H>>,
+	proof: Option<Proof>,
 	_phantom: ::std::marker::PhantomData<(S, F)>,
 }
 
@@ -124,6 +125,7 @@ impl<S, F, Block, H> ClientBackend<Block, H> for Backend<S, F, H> where
 			finalized_blocks: Vec::new(),
 			set_head: None,
 			storage_update: None,
+			proof: None,
 			_phantom: Default::default(),
 		})
 	}
@@ -150,6 +152,7 @@ impl<S, F, Block, H> ClientBackend<Block, H> for Backend<S, F, H> where
 				operation.cache,
 				operation.leaf_state,
 				operation.aux_ops,
+				operation.proof,
 			)?;
 
 			// when importing genesis block => remember its state
@@ -248,11 +251,12 @@ where
 		header: Block::Header,
 		_body: Option<Vec<Block::Extrinsic>>,
 		_justification: Option<Justification>,
-		_proof: Option<Proof>,
+		proof: Option<Proof>,
 		state: NewBlockState,
 	) -> ClientResult<()> {
 		self.leaf_state = state;
 		self.header = Some(header);
+		self.proof = proof;
 		Ok(())
 	}
 

@@ -412,9 +412,10 @@ impl<Block: BlockT> light::blockchain::Storage<Block> for Blockchain<Block>
 		_cache: HashMap<CacheKeyId, Vec<u8>>,
 		state: NewBlockState,
 		aux_ops: Vec<(Vec<u8>, Option<Vec<u8>>)>,
+		proof: Option<Proof>,
 	) -> error::Result<()> {
 		let hash = header.hash();
-		self.insert(hash, header, None, None, None, state)?;
+		self.insert(hash, header, None, proof, None, state)?;
 
 		self.write_aux(aux_ops);
 		Ok(())

@@ -44,6 +44,7 @@ pub trait Storage<Block: BlockT>: AuxStore + BlockchainHeaderBackend<Block> {
 		cache: HashMap<well_known_cache_keys::Id, Vec<u8>>,
 		state: NewBlockState,
 		aux_ops: Vec<(Vec<u8>, Option<Vec<u8>>)>,
+		proof: Option<Proof>,
 	) -> ClientResult<()>;
 
 	/// Set an existing block as new best block.
@@ -261,6 +262,7 @@ pub mod tests {
 			_cache: HashMap<well_known_cache_keys::Id, Vec<u8>>,
 			_state: NewBlockState,
 			_aux_ops: Vec<(Vec<u8>, Option<Vec<u8>>)>,
+			_proof: Option<Proof>
 		) -> ClientResult<()> {
 			Ok(())
 		}
