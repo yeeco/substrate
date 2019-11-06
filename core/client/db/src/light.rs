@@ -536,7 +536,7 @@ impl<Block> LightBlockchainStorage<Block> for LightStorage<Block>
 		let res = read_db(&*self.db, columns::KEY_LOOKUP, columns::PROOF, *id);
 		if res.is_ok() {
 			match res.unwrap() {
-				Some(proof) => Some(proof.to_vec()),
+				Some(proof) => Decode::decode(&mut &proof[..]),
 				None => None
 			}
 		} else {

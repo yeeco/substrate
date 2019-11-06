@@ -245,7 +245,10 @@ impl<Block: BlockT> client::blockchain::Backend<Block> for BlockchainDb<Block> {
 
 	fn proof(&self, id: BlockId<Block>) -> Result<Option<Proof>, client::error::Error> {
 		match read_db(&*self.db, columns::KEY_LOOKUP, columns::PROOF, id)?{
-			Some(proof) => Ok(Some(proof.to_vec())),
+			Some(proof) => match Decode::decode(&mut &proof[..]){
+				Some(proof) => Ok(Some(proof)),
+				None => return Err(client::error::ErrorKind::Backend("Error decoding proof".into()).into()),
+			}
 			None => Ok(None)
 		}
 	}
