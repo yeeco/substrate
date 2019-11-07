@@ -77,6 +77,7 @@ pub trait Verifier<B: BlockT>: Send + Sync + Sized {
 		origin: BlockOrigin,
 		header: B::Header,
 		justification: Option<Justification>,
+		proof: Option<Proof>,
 		body: Option<Vec<B::Extrinsic>>,
 	) -> Result<(ImportBlock<B>, Option<Vec<AuthorityIdFor<B>>>), String>;
 }
@@ -551,8 +552,8 @@ pub fn import_single_block<B: BlockT, V: Verifier<B>>(
 ) -> Result<BlockImportResult<NumberFor<B>>, BlockImportError> {
 	let peer = block.origin;
 
-	let (header, justification) = match (block.header, block.justification) {
-		(Some(header), justification) => (header, justification),
+	let (header, justification, proof) = match (block.header, block.justification, block.proof) {
+		(Some(header), justification, proof) => (header, justification, proof),
 		(None, _) => {
 			if let Some(ref peer) = peer {
 				debug!(target: "sync", "Header {} was not provided by {} ", block.hash, peer);
