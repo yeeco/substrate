@@ -554,7 +554,7 @@ pub fn import_single_block<B: BlockT, V: Verifier<B>>(
 
 	let (header, justification, proof) = match (block.header, block.justification, block.proof) {
 		(Some(header), justification, proof) => (header, justification, proof),
-		(None, _) => {
+		(None, _, _) => {
 			if let Some(ref peer) = peer {
 				debug!(target: "sync", "Header {} was not provided by {} ", block.hash, peer);
 			} else {
@@ -595,7 +595,7 @@ pub fn import_single_block<B: BlockT, V: Verifier<B>>(
 		r @ _ => return Ok(r), // Any other successfull result means that the block is already imported.
 	}
 
-	let (import_block, new_authorities) = verifier.verify(block_origin, header, justification, block.body)
+	let (import_block, new_authorities) = verifier.verify(block_origin, header, justification, proof, block.body)
 		.map_err(|msg| {
 			if let Some(ref peer) = peer {
 				trace!(target: "sync", "Verifying {}({}) from {} failed: {}", number, hash, peer, msg);
