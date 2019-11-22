@@ -310,7 +310,7 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, I: IdentifySpecialization
 			if let Err(e) = join.join() {
 				error!("Error while waiting on background thread: {:?}", e);
 			}
-			info!("Network service bg_thread exit");
+			error!("Network service bg_thread exit");
 		}
 	}
 }
