@@ -305,8 +305,10 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, I: IdentifySpecialization
 
 impl<B: BlockT + 'static, S: NetworkSpecialization<B>, I: IdentifySpecialization> Drop for Service<B, S, I> {
 	fn drop(&mut self) {
+		error!("Network service dropping");
 		if let Some((sender, join)) = self.bg_thread.take() {
-			let _ = sender.send(());
+			let a = sender.send(());
+			error!("Network service send: {:?}", a);
 			if let Err(e) = join.join() {
 				error!("Error while waiting on background thread: {:?}", e);
 			}
