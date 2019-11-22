@@ -606,11 +606,13 @@ impl<Components> Service<Components> where Components: components::Components {
 impl<Components> Drop for Service<Components> where Components: components::Components {
 	fn drop(&mut self) {
 		debug!(target: "service", "Substrate service shutdown");
-
+		info!("Service dropping");
 		drop(self.network.take());
+		info!("Service dropping: network dropped");
 
 		if let Some(signal) = self.signal.take() {
 			signal.fire();
+			info!("Service dropping: signal fired");
 		}
 	}
 }
