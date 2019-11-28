@@ -113,7 +113,7 @@ impl<Hash, Ex> WaitingTransaction<Hash, Ex> {
 
 	/// Returns true if transaction has all requirements satisfied.
 	pub fn is_ready(&self) -> bool {
-		self.missing_tags.is_empty()
+		self.missing_tags.is_empty() && self.has_spv
 	}
 }
 
