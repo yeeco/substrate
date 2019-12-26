@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use runtime_primitives::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use runtime_primitives::generic::BlockId;
-use runtime_primitives::{Justification, Proof};
+use runtime_primitives::{Justification, Proof, RelayTxs};
 use consensus::well_known_cache_keys;
 
 use crate::error::{ErrorKind, Result};
@@ -80,6 +80,8 @@ pub trait Backend<Block: BlockT>: HeaderBackend<Block> {
 	fn justification(&self, id: BlockId<Block>) -> Result<Option<Justification>>;
 	/// Get block foreign proof.
 	fn proof(&self, id: BlockId<Block>) -> Result<Option<Proof>>;
+	/// Get relay txs' status of block.
+	fn relay_txs(&self, id: &BlockId<Block>) -> Result<Option<RelayTxs>>;
 	/// Get last finalized block hash.
 	fn last_finalized(&self) -> Result<Block::Hash>;
 	/// Returns data cache reference, if it is enabled on this backend.

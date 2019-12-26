@@ -45,7 +45,7 @@ use trie::{MemoryDB, PrefixedMemoryDB, prefixed_key};
 use parking_lot::{Mutex, RwLock};
 use primitives::{H256, Blake2Hasher, ChangesTrieConfiguration, convert_hash};
 use primitives::storage::well_known_keys;
-use runtime_primitives::{generic::BlockId, Justification, StorageOverlay, ChildrenStorageOverlay, Proof};
+use runtime_primitives::{generic::BlockId, Justification, StorageOverlay, ChildrenStorageOverlay, Proof, RelayTxs};
 use runtime_primitives::traits::{Block as BlockT, Header as HeaderT, As, NumberFor, Zero, Digest, DigestItem};
 use runtime_primitives::BuildStorage;
 use state_machine::backend::Backend as StateBackend;
@@ -251,6 +251,11 @@ impl<Block: BlockT> client::blockchain::Backend<Block> for BlockchainDb<Block> {
 			}
 			None => Ok(None)
 		}
+	}
+
+	fn relay_txs(&self, id: &BlockId<Block>) -> Result<Option<RelayTxs>, client::error::Error> {
+		// todo
+		Ok(None)
 	}
 
 	fn last_finalized(&self) -> Result<Block::Hash, client::error::Error> {
