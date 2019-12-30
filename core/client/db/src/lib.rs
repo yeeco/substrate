@@ -253,11 +253,6 @@ impl<Block: BlockT> client::blockchain::Backend<Block> for BlockchainDb<Block> {
 		}
 	}
 
-	fn relay_txs(&self, id: &BlockId<Block>) -> Result<Option<RelayTxs>, client::error::Error> {
-		// todo
-		Ok(None)
-	}
-
 	fn last_finalized(&self) -> Result<Block::Hash, client::error::Error> {
 		Ok(self.meta.read().finalized_hash.clone())
 	}

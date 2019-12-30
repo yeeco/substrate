@@ -356,11 +356,6 @@ impl<Block: BlockT> blockchain::Backend<Block> for Blockchain<Block> {
 		))
 	}
 
-	fn relay_txs(&self, id: &BlockId<Block>) -> error::Result<Option<RelayTxs>> {
-		// todo
-		Ok(None)
-	}
-
 	fn last_finalized(&self) -> error::Result<Block::Hash> {
 		Ok(self.storage.read().finalized_hash.clone())
 	}
@@ -458,14 +453,6 @@ impl<Block: BlockT> light::blockchain::Storage<Block> for Blockchain<Block>
             StoredBlock::Full(_, _, proof) => (*proof).clone(),
         }))
     }
-
-	fn set_relay_txs_flag(&self, id: &BlockId<Block>, total: u32, indices: Vec<u32>) -> error::Result<()> {
-		Ok(())
-	}
-
-	fn relay_txs(&self, id: &BlockId<Block>) -> Option<RelayTxs> {
-		None
-	}
 }
 
 /// In-memory operation.

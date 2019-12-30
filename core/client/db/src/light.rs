@@ -539,51 +539,6 @@ impl<Block> LightBlockchainStorage<Block> for LightStorage<Block>
 			_ => None
 		}
 	}
-
-	fn set_relay_txs_flag(&self, id: &BlockId<Block>, total: u32, indices: Vec<u32>) -> ClientResult<()> {
-		let flag: Option<RelayTxs> = match read_db(&*self.db, columns::KEY_LOOKUP, columns::RELAY_TX, *id) {
-			Ok(Some(data)) => Decode::decode(&mut &data[..]),
-			_ => None
-		};
-
-		let set_flag = |mut flag: Vec<u8>, indices: Vec<u32>| -> Vec<u8> {
-			for i in indices {
-				let bit_at = if (i + 1) % 8 == 0 { i / 8 } else { i / 8 + 1 } as usize;
-				let f = 1u8 << (8 - i - 1) % 8;
-				flag[bit_at - 1] |= f;
-			}
-			flag
-		};
-
-		let flag = match flag {
-			Some(mut flag) => {
-				set_flag(flag, indices)
-			}
-			None => {
-				let bytes = if total % 8 == 0 { total / 8 } else { total / 8 + 1 } as usize;
-				let mut flag = vec![0u8; bytes];
-				set_flag(flag, indices)
-			}
-		};
-
-		utils::block_id_to_lookup_key(&*self.db, columns::KEY_LOOKUP, *id)
-			.and_then(|key| match key {
-				Some(k) => {
-					let mut transaction = DBTransaction::new();
-					transaction.delete(columns::RELAY_TX, &k);
-					transaction.put(columns::RELAY_TX, &k, &flag.encode());
-					self.db.write(transaction).map_err(db_err)
-				}
-				None => Ok(())
-			})
-	}
-
-	fn relay_txs(&self, id: &BlockId<Block>) -> Option<RelayTxs> {
-		match read_db(&*self.db, columns::KEY_LOOKUP, columns::RELAY_TX, *id) {
-			Ok(Some(data)) => Decode::decode(&mut &data[..]),
-			_ => None
-		}
-	}
 }
 
 /// Build the key for inserting header-CHT at given block.

@@ -67,12 +67,6 @@ pub trait Storage<Block: BlockT>: AuxStore + BlockchainHeaderBackend<Block> {
 
 	/// Get proof of block.
 	fn proof(&self, id: &BlockId<Block>) -> Option<Proof>;
-
-	/// Set relay txs packed flag
-	fn set_relay_txs_flag(&self, id: &BlockId<Block>, total: u32, indices: Vec<u32>) -> ClientResult<()>;
-
-	/// Get relay txs' status of block.(packed into block or not)
-	fn relay_txs(&self, id: &BlockId<Block>) -> Option<RelayTxs>;
 }
 
 /// Light client blockchain.
@@ -165,10 +159,6 @@ impl<S, F, Block> BlockchainBackend<Block> for Blockchain<S, F> where Block: Blo
 
 	fn proof(&self, id: BlockId<Block>) -> ClientResult<Option<Proof>> {
 		Ok(self.storage.proof(&id))
-	}
-
-	fn relay_txs(&self, id: &BlockId<Block>) -> ClientResult<Option<RelayTxs>> {
-		Ok(self.storage.relay_txs(&id))
 	}
 
 	fn last_finalized(&self) -> ClientResult<Block::Hash> {
@@ -309,9 +299,5 @@ pub mod tests {
 		}
 
 		fn proof(&self, id: &BlockId<Block>) -> Option<Proof> { None }
-
-		fn set_relay_txs_flag(&self, id: &BlockId<Block>, total: u32, indices: vec<u32>) -> ClientResult<()> { Ok(()) }
-
-		fn relay_txs(&self, id: &BlockId<Block>) -> Option<RelayTxs> { None }
 	}
 }

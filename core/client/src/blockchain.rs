@@ -80,8 +80,6 @@ pub trait Backend<Block: BlockT>: HeaderBackend<Block> {
 	fn justification(&self, id: BlockId<Block>) -> Result<Option<Justification>>;
 	/// Get block foreign proof.
 	fn proof(&self, id: BlockId<Block>) -> Result<Option<Proof>>;
-	/// Get relay txs' status of block.
-	fn relay_txs(&self, id: &BlockId<Block>) -> Result<Option<RelayTxs>>;
 	/// Get last finalized block hash.
 	fn last_finalized(&self) -> Result<Block::Hash>;
 	/// Returns data cache reference, if it is enabled on this backend.
