@@ -48,7 +48,6 @@ pub(crate) mod columns {
 	pub const CHT: Option<u32> = Some(4);
 	pub const AUX: Option<u32> = Some(5);
 	pub const PROOF: Option<u32> = Some(6);
-	pub const RELAY_TX: Option<u32> = Some(7);
 }
 
 /// Prefix for headers CHT.
