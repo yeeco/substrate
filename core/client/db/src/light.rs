@@ -30,7 +30,7 @@ use client::error::{ErrorKind as ClientErrorKind, Result as ClientResult};
 use client::light::blockchain::Storage as LightBlockchainStorage;
 use parity_codec::{Decode, Encode};
 use primitives::Blake2Hasher;
-use runtime_primitives::{generic::BlockId, Proof, RelayTxs};
+use runtime_primitives::{generic::BlockId, Proof};
 use runtime_primitives::traits::{Block as BlockT, Header as HeaderT,
 	Zero, One, As, NumberFor, Digest, DigestItem};
 use consensus_common::well_known_cache_keys;

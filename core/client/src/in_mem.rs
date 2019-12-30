@@ -23,7 +23,7 @@ use primitives::{ChangesTrieConfiguration, storage::well_known_keys};
 use runtime_primitives::generic::BlockId;
 use runtime_primitives::traits::{Block as BlockT, Header as HeaderT, Zero,
 	NumberFor, As, Digest, DigestItem};
-use runtime_primitives::{Justification, StorageOverlay, ChildrenStorageOverlay, Proof, RelayTxs};
+use runtime_primitives::{Justification, StorageOverlay, ChildrenStorageOverlay, Proof};
 use state_machine::backend::{Backend as StateBackend, InMemory, Consolidate};
 use state_machine::{self, InMemoryChangesTrieStorage, ChangesTrieAnchorBlockId};
 use hash_db::Hasher;

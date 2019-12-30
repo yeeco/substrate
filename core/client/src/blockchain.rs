@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use runtime_primitives::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use runtime_primitives::generic::BlockId;
-use runtime_primitives::{Justification, Proof, RelayTxs};
+use runtime_primitives::{Justification, Proof};
 use consensus::well_known_cache_keys;
 
 use crate::error::{ErrorKind, Result};

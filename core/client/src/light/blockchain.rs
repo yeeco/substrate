@@ -21,7 +21,7 @@ use std::{sync::{Weak, Arc}, collections::HashMap};
 use futures::{Future, IntoFuture};
 use parking_lot::Mutex;
 
-use runtime_primitives::{Justification, generic::BlockId, Proof, RelayTxs};
+use runtime_primitives::{Justification, generic::BlockId, Proof};
 use runtime_primitives::traits::{Block as BlockT, Header as HeaderT, NumberFor, Zero};
 use consensus::well_known_cache_keys;
 
