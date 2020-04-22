@@ -89,6 +89,9 @@ pub use random_number_generator::RandomNumberGenerator;
 /// bypasses this problem.
 pub type Justification = Vec<u8>;
 
+/// An abstraction over proof for a block's different shards extrinsics
+pub type Proof = Vec<u8>;
+
 use traits::{Verify, Lazy};
 
 /// A module identifier. These are per module and should be stored in a registry somewhere.

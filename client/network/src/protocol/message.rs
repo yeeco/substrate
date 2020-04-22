@@ -82,6 +82,8 @@ bitflags! {
 		const MESSAGE_QUEUE = 0b00001000;
 		/// Include a justification for the block.
 		const JUSTIFICATION = 0b00010000;
+		/// Include a proof for the block
+		const PROOF = 0b00100000;
 	}
 }
 

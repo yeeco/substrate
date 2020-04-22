@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_runtime::generic::BlockId;
-use sp_runtime::Justification;
+use sp_runtime::{Justification, Proof};
 use log::warn;
 use parking_lot::RwLock;
 
@@ -85,6 +85,8 @@ pub trait Backend<Block: BlockT>: HeaderBackend<Block> + HeaderMetadata<Block, E
 	fn body(&self, id: BlockId<Block>) -> Result<Option<Vec<<Block as BlockT>::Extrinsic>>>;
 	/// Get block justification. Returns `None` if justification does not exist.
 	fn justification(&self, id: BlockId<Block>) -> Result<Option<Justification>>;
+	/// Get block proof.
+	fn proof(&self, id: BlockId<Block>) -> Result<Option<Proof>> { Ok(None) }
 	/// Get last finalized block hash.
 	fn last_finalized(&self) -> Result<Block::Hash>;
 	/// Returns data cache reference, if it is enabled on this backend.

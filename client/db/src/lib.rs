@@ -67,7 +67,7 @@ use parking_lot::RwLock;
 use sp_core::{ChangesTrieConfiguration, traits::CodeExecutor};
 use sp_core::storage::{well_known_keys, ChildInfo};
 use sp_runtime::{
-	generic::BlockId, Justification, Storage,
+	generic::BlockId, Justification, Proof, Storage,
 	BuildStorage,
 };
 use sp_runtime::traits::{
@@ -369,6 +369,8 @@ pub(crate) mod columns {
 	/// Offchain workers local storage
 	pub const OFFCHAIN: u32 = 9;
 	pub const CACHE: u32 = 10;
+	/// proof of different shard's extrinsics
+	pub const PROOF: u32 = 11;
 }
 
 struct PendingBlock<Block: BlockT> {
@@ -498,6 +500,18 @@ impl<Block: BlockT> sc_client::blockchain::Backend<Block> for BlockchainDb<Block
 				Ok(justification) => Ok(Some(justification)),
 				Err(err) => return Err(sp_blockchain::Error::Backend(
 					format!("Error decoding justification: {}", err)
+				)),
+			}
+			None => Ok(None),
+		}
+	}
+
+	fn proof(&self, id: BlockId<Block>) -> ClientResult<Option<Proof>> {
+		match read_db(&*self.db, columns::KEY_LOOKUP, columns::PROOF, id)? {
+			Some(proof) => match Decode::decode(&mut &proof[..]) {
+				Ok(proof) => Ok(Some(proof)),
+				Err(err) => return Err(sp_blockchain::Error::Backend(
+					format!("Error decoding proof: {}", err)
 				)),
 			}
 			None => Ok(None),
