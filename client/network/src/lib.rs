@@ -252,6 +252,7 @@ mod schema;
 mod service;
 mod transport;
 mod utils;
+mod identify_specialization;
 
 pub mod config;
 pub mod error;
@@ -266,6 +267,9 @@ pub use libp2p::{Multiaddr, PeerId};
 pub use libp2p::multiaddr;
 
 pub use sc_peerset::ReputationChange;
+
+pub use crate::identify_specialization::{IdentifySpecialization, DefaultIdentifySpecialization};
+pub use libp2p::identify::IdentifyInfo;
 
 /// The maximum allowed number of established connections per peer.
 ///
