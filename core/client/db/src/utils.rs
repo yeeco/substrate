@@ -79,8 +79,10 @@ pub type NumberIndexKey = [u8; 4];
 /// In the current database schema, this kind of key is only used for
 /// lookups into an index, NOT for storing header data or others.
 pub fn number_index_key<N>(n: N) -> NumberIndexKey where N: As<u64> {
-	let n: u64 = n.as_();
-	assert!(n & 0xffffffff00000000 == 0);
+	let mut n: u64 = n.as_();
+	if n > 0xffffffff {
+		n = 0xffffffff;
+	}
 
 	[
 		(n >> 24) as u8,
