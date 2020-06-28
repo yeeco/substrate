@@ -27,14 +27,14 @@ use client::{
 	block_builder::api::BlockBuilder as BlockBuilderApi, runtime_api::Core,
 };
 use codec::Decode;
-use consensus_common::{self, evaluation};
+use consensus_common::{self, evaluation, Filter};
 use primitives::{H256, Blake2Hasher, ExecutionContext};
 use runtime_primitives::traits::{
 	Block as BlockT, Hash as HashT, Header as HeaderT, ProvideRuntimeApi, AuthorityIdFor
 };
 use runtime_primitives::generic::BlockId;
 use runtime_primitives::ApplyError;
-use transaction_pool::txpool::{self, Pool as TransactionPool};
+use transaction_pool::txpool::{self, Pool as TransactionPool, ExtrinsicFor};
 use inherents::{InherentData, pool::InherentsPool};
 use substrate_telemetry::{telemetry, CONSENSUS_INFO};
 
@@ -54,10 +54,11 @@ pub trait AuthoringApi: Send + Sync + ProvideRuntimeApi where
 	type Error: std::error::Error;
 
 	/// Build a block on top of the given, with inherent extrinsics pre-pushed.
-	fn build_block<F: FnMut(&mut BlockBuilder<Self::Block>) -> ()>(
+	fn build_block<F: FnMut(&mut BlockBuilder<Self::Block>, &mut Vec<bool>) -> ()>(
 		&self,
 		at: &BlockId<Self::Block>,
 		inherent_data: InherentData,
+		ctx_result : &mut Vec<bool>,
 		build_ctx: F,
 	) -> Result<Self::Block, error::Error>;
 }
@@ -88,10 +89,11 @@ impl<B, E, Block, RA> AuthoringApi for SubstrateClient<B, E, Block, RA> where
 	type Block = Block;
 	type Error = client::error::Error;
 
-	fn build_block<F: FnMut(&mut BlockBuilder<Self::Block>) -> ()>(
+	fn build_block<F: FnMut(&mut BlockBuilder<Self::Block>, &mut Vec<bool>) -> ()>(
 		&self,
 		at: &BlockId<Self::Block>,
 		inherent_data: InherentData,
+		ctx_result : &mut Vec<bool>,
 		mut build_ctx: F,
 	) -> Result<Self::Block, error::Error> {
 		let mut block_builder = self.new_block_at(at)?;
@@ -100,9 +102,13 @@ impl<B, E, Block, RA> AuthoringApi for SubstrateClient<B, E, Block, RA> where
 		// We don't check the API versions any further here since the dispatch compatibility
 		// check should be enough.
 		runtime_api.inherent_extrinsics_with_context(at, ExecutionContext::BlockConstruction, inherent_data)?
-			.into_iter().try_for_each(|i| block_builder.push(i).map(|_|()))?;
+			.into_iter().try_for_each(|i| {
+			block_builder.push(i).map(|result| {
+				ctx_result.push(result);
+			})
+		})?;
 
-		build_ctx(&mut block_builder);
+		build_ctx(&mut block_builder, ctx_result);
 
 		block_builder.bake().map_err(Into::into)
 	}
@@ -132,6 +138,7 @@ impl<C, A> consensus_common::Environment<<C as AuthoringApi>::Block> for Propose
 		&self,
 		parent_header: &<<C as AuthoringApi>::Block as BlockT>::Header,
 		_: &[AuthorityIdFor<<C as AuthoringApi>::Block>],
+		filter: Option<Arc<dyn Filter<ExtrinsicFor<A>>>>,
 	) -> Result<Self::Proposer, error::Error> {
 		let parent_hash = parent_header.hash();
 
@@ -147,6 +154,7 @@ impl<C, A> consensus_common::Environment<<C as AuthoringApi>::Block> for Propose
 			transaction_pool: self.transaction_pool.clone(),
 			inherents_pool: self.inherents_pool.clone(),
 			now: Box::new(time::Instant::now),
+			filter,
 		};
 
 		Ok(proposer)
@@ -162,6 +170,7 @@ pub struct Proposer<Block: BlockT, C, A: txpool::ChainApi> {
 	transaction_pool: Arc<TransactionPool<A>>,
 	inherents_pool: Arc<InherentsPool<<Block as BlockT>::Extrinsic>>,
 	now: Box<Fn() -> time::Instant>,
+	filter: Option<Arc<dyn Filter<<Block as BlockT>::Extrinsic>>>,
 }
 
 impl<Block, C, A> consensus_common::Proposer<<C as AuthoringApi>::Block> for Proposer<Block, C, A> where
@@ -205,14 +214,20 @@ impl<Block, C, A> Proposer<Block, C, A>	where
 		let block = self.client.build_block(
 			&self.parent_id,
 			inherent_data,
-			|block_builder| {
+			&mut exe_result,
+			|block_builder, ctx_result| {
 				// Add inherents from the internal pool
 
 				let inherents = self.inherents_pool.drain();
 				debug!("Pushing {} queued inherents.", inherents.len());
 				for i in inherents {
-					if let Err(e) = block_builder.push_extrinsic(i) {
-						warn!("Error while pushing inherent extrinsic from the pool: {:?}", e);
+					match block_builder.push_extrinsic(i) {
+						Ok(result) => {
+							ctx_result.push(result);
+						},
+						Err(e) => {
+							warn!("Error while pushing inherent extrinsic from the pool: {:?}", e);
+						}
 					}
 				}
 
@@ -229,14 +244,19 @@ impl<Block, C, A> Proposer<Block, C, A>	where
 						break;
 					}
 
+					if let Some(filter) = &self.filter {
+						if !filter.accept(&pending.data) {
+							debug!("[{:?}] Unacceptable transaction", pending.hash);
+							unqueue_invalid.push(pending.hash.clone());
+							continue;
+						}
+					}
+
 					trace!("[{:?}] Pushing to the block.", pending.hash);
 					match block_builder.push_extrinsic(pending.data.clone()) {
-						Ok(true) => {
-							exe_result.push(true);
-							debug!("[{:?}] Pushed to the block.", pending.hash);
-						}
-						Ok(false) =>{
-							exe_result.push(false);
+						Ok(result) => {
+							ctx_result.push(result);
+							debug!("[{:?}] Pushed to the block: {}", pending.hash, result);
 						}
 						Err(error::Error(error::ErrorKind::ApplyExtrinsicFailed(ApplyError::FullBlock), _)) => {
 							if is_first {
@@ -264,6 +284,8 @@ impl<Block, C, A> Proposer<Block, C, A>	where
 
 				self.transaction_pool.remove_invalid(&unqueue_invalid);
 			})?;
+
+		assert!(block.extrinsics().len() == exe_result.len(), "Extrinsics len should be equal to exe_result len: {}, {}", block.extrinsics().len(), exe_result.len());
 
 		info!("Prepared block for proposing at {} [hash: {:?}; parent_hash: {}; extrinsics: [{}]]",
 			block.header().number(),
