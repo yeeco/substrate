@@ -384,6 +384,8 @@ pub enum ApplyError {
 	Future = 2,
 	/// Sending account had too low a balance.
 	CantPay = 3,
+	// Bad shard extrinsic.
+	BadShard = 4,
 	/// Block is full, no more extrinsics can be applied.
 	FullBlock = 255,
 }
