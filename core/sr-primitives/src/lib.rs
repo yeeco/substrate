@@ -46,6 +46,9 @@ pub mod transaction_validity;
 /// A message indicating an invalid signature in extrinsic.
 pub const BAD_SIGNATURE: &str = "bad signature in extrinsic";
 
+/// A message indicating an unacceptable sender in extrinsic.
+pub const UNACCEPTABLE_SENDER: &str = "unacceptable sender";
+
 /// Full block error message.
 ///
 /// This allows modules to indicate that given transaction is potentially valid
@@ -384,8 +387,8 @@ pub enum ApplyError {
 	Future = 2,
 	/// Sending account had too low a balance.
 	CantPay = 3,
-	// Bad shard extrinsic.
-	BadShard = 4,
+	// Unacceptable sender
+	UnacceptableSender = 4,
 	/// Block is full, no more extrinsics can be applied.
 	FullBlock = 255,
 }

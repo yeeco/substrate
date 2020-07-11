@@ -76,7 +76,7 @@ use rstd::prelude::*;
 #[cfg(any(feature = "std", test))]
 use rstd::map;
 use primitives::traits::{self, CheckEqual, SimpleArithmetic, SimpleBitOps, Zero, One, Bounded, Lookup,
-	Hash, Member, MaybeDisplay, EnsureOrigin, Digest as DigestT, As, CurrentHeight, BlockNumberToHash,
+	Hash, Member, MaybeDisplay, EnsureOrigin, Digest as DigestT, As, CurrentHeight, BlockNumberToHash, CheckSender,
 	MaybeSerializeDebugButNotDeserialize, MaybeSerializeDebug, StaticLookup};
 use substrate_primitives::storage::well_known_keys;
 use srml_support::{storage, StorageValue, StorageMap, Parameter, decl_module, decl_event,
@@ -566,6 +566,13 @@ impl<T: Trait> BlockNumberToHash for ChainContext<T> {
 	type Hash = T::Hash;
 	fn block_number_to_hash(&self, n: Self::BlockNumber) -> Option<Self::Hash> {
 		Some(<Module<T>>::block_hash(n))
+	}
+}
+
+impl<T: Trait> CheckSender for ChainContext<T> {
+	type Sender = T::AccountId;
+	fn check_sender(&self, _sender: &Self::Sender) -> bool {
+		true
 	}
 }
 

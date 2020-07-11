@@ -140,6 +140,14 @@ pub trait BlockNumberToHash {
 	}
 }
 
+/// Extra check for sender
+pub trait CheckSender {
+
+	type Sender;
+
+	fn check_sender(&self, sender: &Self::Sender) -> bool;
+}
+
 /// Extensible conversion trait. Generic over both source and destination types.
 pub trait Convert<A, B> {
 	/// Make conversion.
