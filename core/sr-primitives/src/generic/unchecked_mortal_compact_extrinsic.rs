@@ -22,8 +22,7 @@ use std::fmt;
 use rstd::prelude::*;
 use runtime_io::blake2_256;
 use crate::codec::{Decode, Encode, Input, Compact};
-use crate::traits::{self, Member, SimpleArithmetic, MaybeDisplay, CurrentHeight, BlockNumberToHash, Lookup,
-	Checkable, Extrinsic};
+use crate::traits::{self, Member, SimpleArithmetic, MaybeDisplay, CurrentHeight, BlockNumberToHash, Lookup, Checkable, Extrinsic, CheckSender};
 use super::{CheckedExtrinsic, Era};
 
 const TRANSACTION_VERSION: u8 = 1;
@@ -77,7 +76,8 @@ where
 	Hash: Encode,
 	Context: Lookup<Source=Address, Target=AccountId>
 		+ CurrentHeight<BlockNumber=BlockNumber>
-		+ BlockNumberToHash<BlockNumber=BlockNumber, Hash=Hash>,
+		+ BlockNumberToHash<BlockNumber=BlockNumber, Hash=Hash>
+		+ CheckSender<Sender=AccountId>,
 {
 	type Checked = CheckedExtrinsic<AccountId, Index, Call>;
 
@@ -87,6 +87,9 @@ where
 				let h = context.block_number_to_hash(BlockNumber::sa(era.birth(context.current_height().as_())))
 					.ok_or("transaction birth block ancient")?;
 				let signed = context.lookup(signed)?;
+				if !context.check_sender(&signed) {
+					return Err(crate::UNACCEPTABLE_SENDER)
+				}
 				let raw_payload = (index, self.function, era, h);
 				if !raw_payload.using_encoded(|payload| {
 					if payload.len() > 256 {
