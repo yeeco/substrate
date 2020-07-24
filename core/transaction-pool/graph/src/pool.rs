@@ -473,6 +473,12 @@ impl<B: ChainApi> Pool<B> {
 		self.pool.read().ready()
 	}
 
+	/// Get an iterator for futures transactions
+	pub fn futures(&self) -> impl Iterator<Item=TransactionFor<B>> {
+		let futures = self.pool.read().futures().map(|tx|Arc::new(tx.clone())).collect::<Vec<_>>();
+		futures.into_iter()
+	}
+
 	/// Returns pool status.
 	pub fn status(&self) -> base::Status {
 		self.pool.read().status()
