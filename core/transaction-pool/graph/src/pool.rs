@@ -39,6 +39,7 @@ use sr_primitives::{
 };
 
 pub use crate::base_pool::Limit;
+pub use crate::base_pool::RelayTag;
 
 /// Modification notification event stream type;
 pub type EventStream = mpsc::UnboundedReceiver<()>;
@@ -220,6 +221,10 @@ impl<B: ChainApi> Pool<B> {
 	/// Enforce spv.
 	pub fn enforce_spv(&self, shard: u16, number: u64, hash: Vec<u8>, parent: Vec<u8>) {
 		self.pool.write().enforce_spv(shard, number, hash, parent);
+	}
+
+	pub fn relay_tags(&self) -> Vec<RelayTag> {
+		self.pool.read().relay_tags()
 	}
 
 	fn enforce_limits(&self) -> HashSet<ExHash<B>> {

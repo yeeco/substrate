@@ -35,10 +35,17 @@ use sr_primitives::transaction_validity::{
 	TransactionLongevity as Longevity,
 	TransactionPriority as Priority,
 };
+use parity_codec::Compact;
 
 use crate::error;
 use crate::future::{FutureTransactions, WaitingTransaction};
 use crate::ready::ReadyTransactions;
+
+/// 0: shard_num
+/// 1: number
+/// 2: hash
+/// 3: parent_hash
+pub type RelayTag = (Compact<u16>, Compact<u64>, Vec<u8>, Vec<u8>);
 
 /// Successful import result.
 #[derive(Debug, PartialEq, Eq)]
@@ -440,6 +447,10 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: ::std::fmt::Debug> BasePool<Hash
 	/// Enforce spv.
 	pub fn enforce_spv(&mut self, shard: u16, number: u64, hash: Vec<u8>, parent: Vec<u8>) {
 		self.future.enforce_spv(shard, number, hash, parent);
+	}
+
+	pub fn relay_tags(&self) -> Vec<RelayTag> {
+		self.future.relay_tags()
 	}
 }
 

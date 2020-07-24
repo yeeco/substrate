@@ -29,13 +29,7 @@ use sr_primitives::transaction_validity::{
 use parity_codec::{Decode, Encode};
 use parity_codec::Compact;
 
-use crate::base_pool::Transaction;
-
-/// 0: shard_num
-/// 1: number
-/// 2: hash
-/// 3: parent_hash
-pub type RelayTag = (Compact<u16>, Compact<u64>, Vec<u8>, Vec<u8>);
+use crate::base_pool::{RelayTag, Transaction};
 
 /// Transaction with partially satisfied dependencies.
 pub struct WaitingTransaction<Hash, Ex> {
@@ -234,6 +228,19 @@ impl<Hash: hash::Hash + Eq + Clone, Ex> FutureTransactions<Hash, Ex> {
         }
         None
     }
+
+	pub fn relay_tags(&self) -> Vec<RelayTag> {
+		let mut tags = vec![];
+		for k in self.wanted_tags.keys() {
+			match Decode::decode(&mut (*k).as_slice()) {
+				Some(v) => {
+					tags.push(v);
+				}
+				None => {}
+			}
+		}
+		tags
+	}
 
 	/// block has spv.
 	/// shard: shard number.
