@@ -886,10 +886,10 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 
 				match res {
 					NativeOrEncoded::Native(v) => {
-						info!("NativeOrEncoded::Native: {:?}", v);
+						info!("NativeOrEncoded::Native");
 					},
 					NativeOrEncoded::Encoded(v) => {
-						info!("NativeOrEncoded::Encoded: {:?}", v);
+						info!("NativeOrEncoded::Encoded: ");
 					}
 				}
 
