@@ -871,7 +871,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 				};
 				let logs = import_headers.post().digest().logs();
 				let extra = Some(logs.encode());
-				let (_, storage_update, changes_update) = self.executor.call_at_state::<_, _, _, NeverNativeValue, fn() -> _>(
+				let (res, storage_update, changes_update) = self.executor.call_at_state::<_, _, _, NeverNativeValue, fn() -> _>(
 					transaction_state,
 					&mut overlay,
 					"Core_execute_block",
@@ -883,6 +883,15 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 					None,
 					NeverOffchainExt::new(),
 				)?;
+
+				match res {
+					NativeOrEncoded::Native(v) => {
+						info!("NativeOrEncoded::Native: {:?}", v);
+					},
+					NativeOrEncoded::Encoded(v) => {
+						info!("NativeOrEncoded::Encoded: {:?}", v);
+					}
+				}
 
 				overlay.commit_prospective();
 
