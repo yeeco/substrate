@@ -153,7 +153,7 @@ impl<B: ChainApi> Pool<B> {
 			})
 			.map(|tx| {
 				info!(target:"pool", "import a tx to pool");
-				let imported = self.pool.write().import(tx?, true)?;
+				let imported = self.pool.write().import(tx?)?;
 
 				if let base::Imported::Ready { .. } = imported {
 					self.import_notification_sinks.lock().retain(|sink| sink.unbounded_send(()).is_ok());
@@ -174,7 +174,7 @@ impl<B: ChainApi> Pool<B> {
 	}
 
 	/// Submit relay extrinsic.
-	pub fn submit_relay_extrinsic(&self, at: &BlockId<B::Block>, xt: ExtrinsicFor<B>, has_spv: bool) -> Result<ExHash<B>, B::Error> {
+	pub fn submit_relay_extrinsic(&self, at: &BlockId<B::Block>, xt: ExtrinsicFor<B>) -> Result<ExHash<B>, B::Error> {
 		let block_number = self.api.block_id_to_number(at)?
 			.ok_or_else(|| error::ErrorKind::Msg(format!("Invalid block id: {:?}", at)).into())?;
 		let (hash, bytes) = self.api.hash_and_length(&xt);
@@ -202,7 +202,7 @@ impl<B: ChainApi> Pool<B> {
 			},
 		};
 		info!(target:"pool", "import a relay tx to pool");
-		let imported = self.pool.write().import(tx?, has_spv)?;
+		let imported = self.pool.write().import(tx?)?;
 
 		if let base::Imported::Ready { .. } = imported {
 			self.import_notification_sinks.lock().retain(|sink| sink.unbounded_send(()).is_ok());
@@ -216,11 +216,6 @@ impl<B: ChainApi> Pool<B> {
 			return Err(error::Error::from(error::ErrorKind::ImmediatelyDropped).into())
 		}
 		Ok(hash)
-	}
-
-	/// Enforce spv.
-	pub fn enforce_spv(&self, shard: u16, number: u64, hash: Vec<u8>, parent: Vec<u8>) {
-		self.pool.write().enforce_spv(shard, number, hash, parent);
 	}
 
 	pub fn relay_tags(&self) -> Vec<RelayTag> {
