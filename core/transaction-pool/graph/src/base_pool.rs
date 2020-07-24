@@ -35,10 +35,17 @@ use sr_primitives::transaction_validity::{
 	TransactionLongevity as Longevity,
 	TransactionPriority as Priority,
 };
+use parity_codec::Compact;
 
 use crate::error;
 use crate::future::{FutureTransactions, WaitingTransaction};
 use crate::ready::ReadyTransactions;
+
+/// 0: shard_num
+/// 1: number
+/// 2: hash
+/// 3: parent_hash
+pub type RelayTag = (Compact<u16>, Compact<u64>, Vec<u8>, Vec<u8>);
 
 /// Successful import result.
 #[derive(Debug, PartialEq, Eq)]
@@ -84,8 +91,7 @@ pub struct PruneStatus<Hash, Ex> {
 }
 
 /// Immutable transaction
-#[cfg_attr(test, derive(Clone))]
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct Transaction<Hash, Extrinsic> {
 	/// Raw extrinsic representing that transaction.
 	pub data: Extrinsic,
@@ -182,7 +188,6 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: ::std::fmt::Debug> BasePool<Hash
 	pub fn import(
 		&mut self,
 		tx: Transaction<Hash, Ex>,
-		has_spv: bool,
 	) -> error::Result<Imported<Hash, Ex>> {
 		if self.future.contains(&tx.hash) || self.ready.contains(&tx.hash) {
 			bail!(error::ErrorKind::AlreadyImported(Box::new(tx.hash.clone())))
@@ -192,13 +197,12 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: ::std::fmt::Debug> BasePool<Hash
 			tx,
 			self.ready.provided_tags(),
 			&self.recently_pruned,
-			has_spv,
 		);
 		trace!(target: "txpool", "[{:?}] {:?}", tx.transaction.hash, tx);
 		debug!(target: "txpool", "[{:?}] Importing to {}", tx.transaction.hash, if tx.is_ready() { "ready" } else { "future" });
 
 		// If doesn't have spv or all tags are not satisfied import to future.
-		if !has_spv || !tx.is_ready() {
+		if !tx.is_ready() {
 			let hash = tx.transaction.hash.clone();
 			self.future.import(tx);
 			return Ok(Imported::Future { hash });
@@ -437,9 +441,8 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: ::std::fmt::Debug> BasePool<Hash
 		}
 	}
 
-	/// Enforce spv.
-	pub fn enforce_spv(&mut self, shard: u16, number: u64, hash: Vec<u8>, parent: Vec<u8>) {
-		self.future.enforce_spv(shard, number, hash, parent);
+	pub fn relay_tags(&self) -> Vec<RelayTag> {
+		self.future.relay_tags()
 	}
 }
 
