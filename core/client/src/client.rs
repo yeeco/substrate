@@ -16,57 +16,58 @@
 
 //! Substrate Client
 
-use std::{marker::PhantomData, collections::{HashSet, BTreeMap, HashMap}, sync::Arc, panic::UnwindSafe, result};
-use crate::error::Error;
+use std::{collections::{BTreeMap, HashMap, HashSet}, marker::PhantomData, panic::UnwindSafe, result, sync::Arc};
+
+use error_chain::bail;
 use futures::sync::mpsc;
+use hash_db::Hasher;
+use log::{debug, info, trace, warn};
+use parity_codec::{Decode, Encode};
 use parking_lot::{Mutex, RwLock};
+
+use consensus::{
+	BlockOrigin, Error as ConsensusError, ErrorKind as ConsensusErrorKind, ForkChoiceStrategy,
+	ImportBlock, ImportResult, well_known_cache_keys::Id as CacheKeyId,
+};
+use consensus;
+use executor::{RuntimeInfo, RuntimeVersion};
+use primitives::{Blake2Hasher, ChangesTrieConfiguration, convert_hash, ExecutionContext, H256, NeverNativeValue};
 use primitives::NativeOrEncoded;
+use primitives::storage::{StorageData, StorageKey};
+use primitives::storage::well_known_keys;
 use runtime_primitives::{
+	generic::{BlockId, SignedBlock},
 	Justification,
 	Proof,
-	generic::{BlockId, SignedBlock},
-};
-use consensus::{
-	Error as ConsensusError, ErrorKind as ConsensusErrorKind, ImportBlock, ImportResult,
-	BlockOrigin, ForkChoiceStrategy, well_known_cache_keys::Id as CacheKeyId,
-};
-use runtime_primitives::traits::{
-	Block as BlockT, Header as HeaderT, Zero, As, NumberFor, CurrentHeight, BlockNumberToHash,
-	ApiRef, ProvideRuntimeApi, Digest, DigestItem
 };
 use runtime_primitives::BuildStorage;
-use crate::runtime_api::{CallRuntimeAt, ConstructRuntimeApi};
-use primitives::{Blake2Hasher, H256, ChangesTrieConfiguration, convert_hash, NeverNativeValue, ExecutionContext};
-use primitives::storage::{StorageKey, StorageData};
-use primitives::storage::well_known_keys;
-use parity_codec::{Encode, Decode};
-use state_machine::{
-	DBValue, Backend as StateBackend, CodeExecutor, ChangesTrieAnchorBlockId,
-	ExecutionStrategy, ExecutionManager, prove_read,
-	ChangesTrieRootsStorage, ChangesTrieStorage,
-	key_changes, key_changes_proof, OverlayedChanges, NeverOffchainExt,
+use runtime_primitives::traits::{
+	ApiRef, As, Block as BlockT, BlockNumberToHash, CurrentHeight, Digest, DigestItem,
+	Header as HeaderT, NumberFor, ProvideRuntimeApi, Zero
 };
-use hash_db::Hasher;
+use state_machine::{
+	Backend as StateBackend, ChangesTrieAnchorBlockId, ChangesTrieRootsStorage, ChangesTrieStorage,
+	CodeExecutor, DBValue, ExecutionManager,
+	ExecutionStrategy, key_changes,
+	key_changes_proof, NeverOffchainExt, OverlayedChanges, prove_read,
+};
+use substrate_telemetry::{SUBSTRATE_INFO, telemetry};
 
 use crate::backend::{self, BlockImportOperation, PrunableStateChangesTrieStorage};
+use crate::block_builder::{self, api::BlockBuilder as BlockBuilderAPI};
 use crate::blockchain::{
-	self, Info as ChainInfo, Backend as ChainBackend, HeaderBackend as ChainHeaderBackend,
-	ProvideCache, Cache,
+	self, Backend as ChainBackend, Cache, HeaderBackend as ChainHeaderBackend,
+	Info as ChainInfo, ProvideCache,
 };
 use crate::call_executor::{CallExecutor, LocalCallExecutor};
-use executor::{RuntimeVersion, RuntimeInfo};
-use crate::notifications::{StorageNotifications, StorageEventStream};
-use crate::light::{call_executor::prove_execution, fetcher::ChangesProof};
 use crate::cht;
 use crate::error::{self, ErrorKind};
-use crate::in_mem;
-use crate::block_builder::{self, api::BlockBuilder as BlockBuilderAPI};
+use crate::error::Error;
 use crate::genesis;
-use consensus;
-use substrate_telemetry::{telemetry, SUBSTRATE_INFO};
-
-use log::{debug, info, trace, warn};
-use error_chain::bail;
+use crate::in_mem;
+use crate::light::{call_executor::prove_execution, fetcher::ChangesProof};
+use crate::notifications::{StorageEventStream, StorageNotifications};
+use crate::runtime_api::{CallRuntimeAt, ConstructRuntimeApi};
 
 /// Type that implements `futures::Stream` of block import events.
 pub type ImportNotifications<Block> = mpsc::UnboundedReceiver<BlockImportNotification<Block>>;
@@ -722,7 +723,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 			hash,
 			import_headers,
 			justification,
-			// proof,
+			proof,
 			body,
 			new_cache,
 			finalized,
@@ -746,7 +747,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 		hash: Block::Hash,
 		import_headers: PrePostHeader<Block::Header>,
 		justification: Option<Justification>,
-		// proof: Option<Proof>,
+		proof: Option<Proof>,
 		body: Option<Vec<Block::Extrinsic>>,
 		new_cache: HashMap<CacheKeyId, Vec<u8>>,
 		finalized: bool,
@@ -783,7 +784,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 		}
 
 		// FIXME #1232: correct path logic for when to execute this function
-		let (storage_update,changes_update,storage_changes, proof) = self.block_execution(&operation.op, &import_headers, origin, hash, body.clone())?;
+		let (storage_update,changes_update,storage_changes, exe_proof) = self.block_execution(&operation.op, &import_headers, origin, hash, body.clone())?;
 
 		let is_new_best = finalized || match fork_choice {
 			ForkChoiceStrategy::LongestChain => import_headers.post().number() > &last_best_number,
@@ -798,7 +799,11 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 		};
 
 		trace!("Imported {}, (#{}), best={}, origin={:?}", hash, import_headers.post().number(), is_new_best, origin);
-
+		let proof = if exe_proof.is_some() {
+			exe_proof
+		} else {
+			proof
+		};
 		if proof.is_none() {
 			info!("execute_and_import_block: proof is none");
 		}
@@ -1565,20 +1570,22 @@ impl<B, E, Block, RA> backend::AuxStore for Client<B, E, Block, RA>
 #[cfg(test)]
 pub(crate) mod tests {
 	use std::collections::HashMap;
-	use super::*;
-	use primitives::blake2_256;
-	use runtime_primitives::traits::DigestItem as DigestItemT;
-	use runtime_primitives::generic::DigestItem;
-	use test_client::{self, TestClient, AccountKeyring};
+
 	use consensus::BlockOrigin;
-	use test_client::client::backend::Backend as TestBackend;
+	use primitives::blake2_256;
+	use runtime_primitives::generic::DigestItem;
+	use runtime_primitives::traits::DigestItem as DigestItemT;
+	use test_client::{self, AccountKeyring, TestClient};
 	use test_client::BlockBuilderExt;
-	use test_client::runtime::{self, Block, Transfer, RuntimeApi, TestAPI};
+	use test_client::client::backend::Backend as TestBackend;
+	use test_client::runtime::{self, Block, RuntimeApi, TestAPI, Transfer};
+
+	use super::*;
 
 	/// Returns tuple, consisting of:
-	/// 1) test client pre-filled with blocks changing balances;
-	/// 2) roots of changes tries for these blocks
-	/// 3) test cases in form (begin, end, key, vec![(block, extrinsic)]) that are required to pass
+        /// 1) test client pre-filled with blocks changing balances;
+        /// 2) roots of changes tries for these blocks
+        /// 3) test cases in form (begin, end, key, vec![(block, extrinsic)]) that are required to pass
 	pub fn prepare_client_with_key_changes() -> (
 		test_client::client::Client<test_client::Backend, test_client::Executor, Block, RuntimeApi>,
 		Vec<H256>,
