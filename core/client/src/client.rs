@@ -722,7 +722,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 			hash,
 			import_headers,
 			justification,
-			proof,
+			// proof,
 			body,
 			new_cache,
 			finalized,
@@ -746,7 +746,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 		hash: Block::Hash,
 		import_headers: PrePostHeader<Block::Header>,
 		justification: Option<Justification>,
-		proof: Option<Proof>,
+		// proof: Option<Proof>,
 		body: Option<Vec<Block::Extrinsic>>,
 		new_cache: HashMap<CacheKeyId, Vec<u8>>,
 		finalized: bool,
@@ -798,6 +798,10 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 		};
 
 		trace!("Imported {}, (#{}), best={}, origin={:?}", hash, import_headers.post().number(), is_new_best, origin);
+
+		if proof.is_none() {
+			info!("execute_and_import_block: proof is none");
+		}
 
 		operation.op.set_block_data(
 			import_headers.post().clone(),
