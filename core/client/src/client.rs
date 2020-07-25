@@ -783,7 +783,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 		}
 
 		// FIXME #1232: correct path logic for when to execute this function
-		let (storage_update,changes_update,storage_changes) = self.block_execution(&operation.op, &import_headers, origin, hash, body.clone())?;
+		let (storage_update,changes_update,storage_changes, proof) = self.block_execution(&operation.op, &import_headers, origin, hash, body.clone())?;
 
 		let is_new_best = finalized || match fork_choice {
 			ForkChoiceStrategy::LongestChain => import_headers.post().number() > &last_best_number,
@@ -842,6 +842,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 		Option<StorageUpdate<B, Block>>,
 		Option<Option<ChangesUpdate>>,
 		Option<Vec<(Vec<u8>, Option<Vec<u8>>)>>,
+		Option<Proof>,
 	)>
 		where
 			E: CallExecutor<Block, Blake2Hasher> + Send + Sync + Clone,
@@ -883,21 +884,22 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 					None,
 					NeverOffchainExt::new(),
 				)?;
-
+				let mut proof = None;
 				match res {
-					NativeOrEncoded::Native(v) => {
-						info!("NativeOrEncoded::Native");
+					NativeOrEncoded::Native(_v) => {
+						debug!("NativeOrEncoded::Native");
 					},
 					NativeOrEncoded::Encoded(v) => {
-						info!("NativeOrEncoded::Encoded: ");
+						debug!("NativeOrEncoded::Encoded: ");
+						proof = Some(v);
 					}
 				}
 
 				overlay.commit_prospective();
 
-				Ok((Some(storage_update), Some(changes_update), Some(overlay.into_committed().collect())))
+				Ok((Some(storage_update), Some(changes_update), Some(overlay.into_committed().collect()), proof))
 			},
-			None => Ok((None, None, None))
+			None => Ok((None, None, None, None))
 		}
 	}
 
