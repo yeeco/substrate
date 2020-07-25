@@ -901,7 +901,8 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 					NativeOrEncoded::Encoded(v) => {
 						debug!("NativeOrEncoded::Encoded: ");
 						if v.len() > 0 {
-							proof = Decode::decode(v);
+							let mut v = v.as_slice();
+							proof = Decode::decode(&mut v);
 						}
 					}
 				}
