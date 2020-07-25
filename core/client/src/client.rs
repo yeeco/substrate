@@ -65,7 +65,7 @@ use crate::genesis;
 use consensus;
 use substrate_telemetry::{telemetry, SUBSTRATE_INFO};
 
-use log::{info, trace, warn};
+use log::{debug, info, trace, warn};
 use error_chain::bail;
 
 /// Type that implements `futures::Stream` of block import events.
