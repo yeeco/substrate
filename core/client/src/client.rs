@@ -798,15 +798,13 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 			crate::backend::NewBlockState::Normal
 		};
 
-		trace!("Imported {}, (#{}), best={}, origin={:?}", hash, import_headers.post().number(), is_new_best, origin);
 		let proof = if exe_proof.is_some() {
 			exe_proof
 		} else {
 			proof
 		};
-		if proof.is_none() {
-			info!("execute_and_import_block: proof is none");
-		}
+
+		trace!("Imported {}, (#{}), best={}, origin={:?}, proof={:?}", hash, import_headers.post().number(), is_new_best, origin, proof);
 
 		operation.op.set_block_data(
 			import_headers.post().clone(),
