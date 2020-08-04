@@ -152,7 +152,7 @@ impl PruningMode {
 
 impl Default for PruningMode {
 	fn default() -> Self {
-		PruningMode::keep_blocks(256)
+		PruningMode::ArchiveCanonical
 	}
 }
 
