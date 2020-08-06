@@ -421,7 +421,7 @@ impl<B: BlockT, V: 'static + Verifier<B>> BlockImportWorker<B, V> {
 		block_import: SharedBlockImport<B>,
 	) -> Sender<BlockImportWorkerMsg<B>> {
 		let (sender, port) = channel::unbounded();
-		let _ = thread::Builder::new()
+		let _ = thread::Builder::new().stack_size(1024 * 1024 * 1024)
 			.name("ImportQueueWorker".into())
 			.spawn(move || {
 				let worker = BlockImportWorker {
