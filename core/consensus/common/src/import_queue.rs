@@ -242,7 +242,7 @@ impl<B: BlockT> BlockImporter<B> {
 		justification_import: Option<SharedJustificationImport<B>>,
 	) -> Sender<BlockImportMsg<B>> {
 		let (sender, port) = channel::bounded(4);
-		let _ = thread::Builder::new().stack_size(4 * 1024 * 1024 * 1024)
+		let _ = thread::Builder::new().stack_size(1024 * 1024 * 1024)
 			.name("ImportQueue".into())
 			.spawn(move || {
 				let mut importer = BlockImporter {
