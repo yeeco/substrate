@@ -47,6 +47,8 @@ const JUSTIFICATION_RETRY_WAIT: Duration = Duration::from_secs(10);
 const ANNOUNCE_HISTORY_SIZE: usize = 64;
 // Max number of blocks to download for unknown forks.
 const MAX_UNKNOWN_FORK_DOWNLOAD_LEN: u32 = 32;
+// Max leading blocks.
+const MAX_LEADING_BLOCKS: u64 = 128;
 
 #[derive(Debug)]
 struct PeerSync<B: BlockT> {
@@ -363,6 +365,7 @@ pub struct ChainSync<B: BlockT> {
 	import_queue: Box<ImportQueue<B>>,
 	queue_blocks: HashSet<B::Hash>,
 	best_importing_number: NumberFor<B>,
+	finalized_number: NumberFor<B>,
 	is_stopping: AtomicBool,
 	is_offline: Arc<AtomicBool>,
 	is_major_syncing: Arc<AtomicBool>,
@@ -429,6 +432,7 @@ impl<B: BlockT> ChainSync<B> {
 			import_queue,
 			queue_blocks: Default::default(),
 			best_importing_number: Zero::zero(),
+			finalized_number: info.chain.finalized_number,
 			is_stopping: Default::default(),
 			is_offline,
 			is_major_syncing,
@@ -824,6 +828,8 @@ impl<B: BlockT> ChainSync<B> {
 
 	/// Notify about finalization of the given block.
 	pub fn on_block_finalized(&mut self, hash: &B::Hash, number: NumberFor<B>, protocol: &mut Context<B>) {
+		self.finalized_number = number;
+
 		if let Err(err) = self.justifications.on_block_finalized(
 			hash,
 			number,
@@ -994,6 +1000,9 @@ impl<B: BlockT> ChainSync<B> {
 
 	// Download old block with known parent.
 	fn download_stale(&mut self, protocol: &mut Context<B>, who: PeerId, hash: &B::Hash) {
+		if !self.should_download() {
+			return
+		}
 		if let Some(ref mut peer) = self.peers.get_mut(&who) {
 			match peer.state {
 				PeerSyncState::Available => {
@@ -1015,6 +1024,9 @@ impl<B: BlockT> ChainSync<B> {
 
 	// Download old block with unknown parent.
 	fn download_unknown_stale(&mut self, protocol: &mut Context<B>, who: PeerId, hash: &B::Hash) {
+		if !self.should_download() {
+			return
+		}
 		if let Some(ref mut peer) = self.peers.get_mut(&who) {
 			match peer.state {
 				PeerSyncState::Available => {
@@ -1036,6 +1048,9 @@ impl<B: BlockT> ChainSync<B> {
 
 	// Issue a request for a peer to download new blocks, if any are available
 	fn download_new(&mut self, protocol: &mut Context<B>, who: PeerId) {
+		if !self.should_download() {
+			return
+		}
 		if let Some(ref mut peer) = self.peers.get_mut(&who) {
 			// when there are too many blocks in the queue => do not try to download new blocks
 			if self.queue_blocks.len() > MAX_IMPORTING_BLOCKS {
@@ -1064,6 +1079,14 @@ impl<B: BlockT> ChainSync<B> {
 				_ => trace!(target: "sync", "Peer {} is busy", who),
 			}
 		}
+	}
+
+	fn should_download(&self) -> bool {
+		// check best and finalized number gap
+		let leading_number = self.best_queued_number - self.finalized_number;
+		let should_download = leading_number < As::sa(MAX_LEADING_BLOCKS);
+		debug!(target: "sync", "Check before download: leading_number: {}, should_download: {}", leading_number, should_download);
+		should_download
 	}
 
 	fn request_ancestry(protocol: &mut Context<B>, who: PeerId, block: NumberFor<B>) {
