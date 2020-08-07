@@ -477,7 +477,7 @@ fn start_thread<B: BlockT + 'static, I: IdentifySpecialization>(
 	let service_clone = service.clone();
 	let mut runtime = RuntimeBuilder::new().name_prefix("libp2p-").build()?;
 	let peerset_clone = peerset.clone();
-	let thread = thread::Builder::new().name("network".to_string()).spawn(move || {
+	let thread = thread::Builder::new().stack_size(1024 * 1024 * 1024).name("network".to_string()).spawn(move || {
 		let fut = run_thread(protocol_sender, service_clone, network_port, peerset_clone)
 			.select(close_rx.then(|_| Ok(())))
 			.map(|(val, _)| val)

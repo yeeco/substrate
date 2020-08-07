@@ -311,7 +311,7 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 		let info = chain.info()?;
 		let sync = ChainSync::new(is_offline, is_major_syncing, config.roles, &info, import_queue);
 		let _ = thread::Builder::new()
-			.name("Protocol".into())
+			.name("Protocol".into()).stack_size(1024 * 1024 * 1024)
 			.spawn(move || {
 				let mut protocol = Protocol {
 					status_sinks,
