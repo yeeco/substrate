@@ -829,6 +829,7 @@ impl<B: BlockT> ChainSync<B> {
 
     /// Notify about finalization of the given block.
     pub fn on_block_finalized(&mut self, hash: &B::Hash, number: NumberFor<B>, protocol: &mut Context<B>) {
+        trace!(target: "sync", "Block finalized {} ({})", number, hash);
         self.finalized_number = number;
 
         if let Err(err) = self.justifications.on_block_finalized(
