@@ -1090,7 +1090,8 @@ impl<B: BlockT> ChainSync<B> {
             Zero::zero()
         };
         let should_download = leading_number < As::sa(MAX_LEADING_BLOCKS);
-        debug!(target: "sync", "Check before download: leading_number: {}, should_download: {}", leading_number, should_download);
+        debug!(target: "sync", "Check before download: best_queued_number: {}, finalized_number: {},\
+         leading_number: {}, should_download: {}", self.best_queued_number, self.finalized_number, leading_number, should_download);
         should_download
     }
 
