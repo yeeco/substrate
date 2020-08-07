@@ -799,6 +799,7 @@ impl<B: BlockT> ChainSync<B> {
     ///
     /// Queues a new justification request and tries to dispatch all pending requests.
     pub fn request_justification(&mut self, hash: &B::Hash, number: NumberFor<B>, protocol: &mut Context<B>) {
+        trace!(target: "sync", "Request justification: number: {}, hash: {}", number, hash);
         self.justifications.queue_request(
             &(*hash, number),
             |base, block| protocol.client().is_descendent_of(base, block),
