@@ -1083,16 +1083,20 @@ impl<B: BlockT> ChainSync<B> {
         }
     }
 
-    fn should_download(&self) -> bool {
+    fn should_download(&self, protocol: &mut Context<B>) -> bool {
+
+        let info = protocol.client().info().expect("should always get client info");
+        let finalized_number = info.chain.finalized_number;
+
         // check best and finalized number gap
-		let leading_number = if self.best_queued_number >= self.finalized_number {
-            self.best_queued_number - self.finalized_number
+		let leading_number = if self.best_queued_number >= finalized_number {
+            self.best_queued_number - finalized_number
         } else {
             Zero::zero()
         };
         let should_download = leading_number < As::sa(MAX_LEADING_BLOCKS);
         debug!(target: "sync", "Check before download: best_queued_number: {}, finalized_number: {},\
-         leading_number: {}, should_download: {}", self.best_queued_number, self.finalized_number, leading_number, should_download);
+         leading_number: {}, should_download: {}", self.best_queued_number, finalized_number, leading_number, should_download);
         should_download
     }
 
