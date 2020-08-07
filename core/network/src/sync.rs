@@ -1086,7 +1086,7 @@ impl<B: BlockT> ChainSync<B> {
 		let leading_number = if self.best_queued_number >= self.finalized_number {
             self.best_queued_number - self.finalized_number
         } else {
-            0
+            Zero::zero()
         };
         let should_download = leading_number < As::sa(MAX_LEADING_BLOCKS);
         debug!(target: "sync", "Check before download: leading_number: {}, should_download: {}", leading_number, should_download);
