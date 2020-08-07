@@ -1002,7 +1002,7 @@ impl<B: BlockT> ChainSync<B> {
 
     // Download old block with known parent.
     fn download_stale(&mut self, protocol: &mut Context<B>, who: PeerId, hash: &B::Hash) {
-        if !self.should_download() {
+        if !self.should_download(protocol) {
             return;
         }
         if let Some(ref mut peer) = self.peers.get_mut(&who) {
@@ -1026,7 +1026,7 @@ impl<B: BlockT> ChainSync<B> {
 
     // Download old block with unknown parent.
     fn download_unknown_stale(&mut self, protocol: &mut Context<B>, who: PeerId, hash: &B::Hash) {
-        if !self.should_download() {
+        if !self.should_download(protocol) {
             return;
         }
         if let Some(ref mut peer) = self.peers.get_mut(&who) {
@@ -1050,7 +1050,7 @@ impl<B: BlockT> ChainSync<B> {
 
     // Issue a request for a peer to download new blocks, if any are available
     fn download_new(&mut self, protocol: &mut Context<B>, who: PeerId) {
-        if !self.should_download() {
+        if !self.should_download(protocol) {
             return;
         }
         if let Some(ref mut peer) = self.peers.get_mut(&who) {
