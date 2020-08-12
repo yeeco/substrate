@@ -34,6 +34,7 @@ use crate::config::Roles;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use lru_cache::LruCache;
 
 // Maximum blocks to request in a single packet.
 const MAX_BLOCKS_TO_REQUEST: usize = 128;
@@ -49,6 +50,8 @@ const ANNOUNCE_HISTORY_SIZE: usize = 64;
 const MAX_UNKNOWN_FORK_DOWNLOAD_LEN: u32 = 32;
 // Max leading blocks.
 const MAX_LEADING_BLOCKS: u64 = 128;
+// Max justifications to request
+const MAX_JUSTIFICATION_TO_REQUEST: u32 = 128;
 
 #[derive(Debug)]
 struct PeerSync<B: BlockT> {
@@ -101,6 +104,7 @@ struct PendingJustifications<B: BlockT> {
     peer_requests: HashMap<PeerId, PendingJustification<B>>,
     previous_requests: HashMap<PendingJustification<B>, Vec<(PeerId, Instant)>>,
     importing_requests: HashSet<PendingJustification<B>>,
+    justifications_cache: LruCache<B::Hash, (PeerId, Justification)>,
 }
 
 impl<B: BlockT> PendingJustifications<B> {
@@ -111,6 +115,7 @@ impl<B: BlockT> PendingJustifications<B> {
             peer_requests: HashMap::new(),
             previous_requests: HashMap::new(),
             importing_requests: HashSet::new(),
+            justifications_cache: LruCache::new(MAX_JUSTIFICATION_TO_REQUEST as usize),
         }
     }
 
@@ -119,7 +124,7 @@ impl<B: BlockT> PendingJustifications<B> {
     /// justification request for block #10 to a peer at block #2), and we also
     /// throttle requests to the same peer if a previous justification request
     /// yielded no results.
-    fn dispatch(&mut self, peers: &mut HashMap<PeerId, PeerSync<B>>, protocol: &mut Context<B>) {
+    fn dispatch(&mut self, peers: &mut HashMap<PeerId, PeerSync<B>>, protocol: &mut Context<B>, import_queue: &ImportQueue<B>,) {
         if self.pending_requests.is_empty() {
             return;
         }
@@ -186,23 +191,33 @@ impl<B: BlockT> PendingJustifications<B> {
             let request = self.pending_requests.pop_front()
                 .expect("verified to be Some in the beginning of the loop; qed");
 
-            self.peer_requests.insert(peer.clone(), request);
+            if let Some((who, justification)) = self.justifications_cache.remove(&request.0){
+                // can get from local cache
+                trace!(target: "sync", "Requesting justification for block #{} from local cache", request.0);
 
-            peers.get_mut(&peer)
-                .expect("peer was is taken from available_peers; available_peers is a subset of peers; qed")
-                .state = PeerSyncState::DownloadingJustification(request.0);
+                import_queue.import_justification(who, request.0, request.1, justification);
+                self.importing_requests.insert(request);
 
-            trace!(target: "sync", "Requesting justification for block #{} from {}", request.0, peer);
-            let request = message::generic::BlockRequest {
-                id: 0,
-                fields: message::BlockAttributes::JUSTIFICATION,
-                from: message::FromBlock::Hash(request.0),
-                to: None,
-                direction: message::Direction::Ascending,
-                max: Some(1),
-            };
+            } else{
+                // need request from remote peer
+                self.peer_requests.insert(peer.clone(), request);
 
-            protocol.send_block_request(peer, request);
+                peers.get_mut(&peer)
+                    .expect("peer was is taken from available_peers; available_peers is a subset of peers; qed")
+                    .state = PeerSyncState::DownloadingJustification(request.0);
+
+                trace!(target: "sync", "Requesting justification for block #{} from {}", request.0, peer);
+                let request = message::generic::BlockRequest {
+                    id: 0,
+                    fields: message::BlockAttributes::JUSTIFICATION,
+                    from: message::FromBlock::Hash(request.0),
+                    to: None,
+                    direction: message::Direction::Ascending,
+                    max: Some(MAX_JUSTIFICATION_TO_REQUEST),
+                };
+
+                protocol.send_block_request(peer, request);
+            }
         }
 
         self.pending_requests.append(&mut unhandled_requests);
@@ -303,6 +318,17 @@ impl<B: BlockT> PendingJustifications<B> {
                 .push((who, Instant::now()));
 
             self.pending_requests.push_front(request);
+        }
+    }
+
+    fn cache(
+        &mut self,
+        who: PeerId,
+        hash: B::Hash,
+        justification: Option<Justification>,
+    ) {
+        if let Some(justification) = justification {
+            self.justifications_cache.insert(hash, (who, justification));
         }
     }
 
@@ -721,9 +747,20 @@ impl<B: BlockT> ChainSync<B> {
             if let PeerSyncState::DownloadingJustification(hash) = peer.state {
                 peer.state = PeerSyncState::Available;
 
-                // we only request one justification at a time
-                match response.blocks.into_iter().next() {
-                    Some(response) => {
+                let count = response.blocks.len();
+                if count == 0 {
+                    // we might have asked the peer for a justification on a block that we thought it had
+                    // (regardless of whether it had a justification for it or not).
+                    trace!(target: "sync", "Peer {:?} provided empty response for justification request {:?}",
+                           who,
+                           hash,
+                    );
+                    return;
+                }
+
+                for (index, response) in response.blocks.into_iter().enumerate() {
+                    // we only process the first one
+                    if index == 0 {
                         if hash != response.hash {
                             let msg = format!(
                                 "Invalid block justification provided: requested: {:?} got: {:?}",
@@ -731,25 +768,19 @@ impl<B: BlockT> ChainSync<B> {
                                 response.hash,
                             );
 
-                            protocol.report_peer(who, Severity::Bad(msg));
+                            protocol.report_peer(who.clone(), Severity::Bad(msg));
                             return;
                         }
-
                         self.justifications.on_response(
-                            who,
+                            who.clone(),
                             response.justification,
                             &*self.import_queue,
                         );
-					},
-                    None => {
-                        // we might have asked the peer for a justification on a block that we thought it had
-                        // (regardless of whether it had a justification for it or not).
-                        trace!(target: "sync", "Peer {:?} provided empty response for justification request {:?}",
-                               who,
-                               hash,
-                        );
-                        return;
-					},
+
+                    }else{
+                        trace!(target: "sync", "Cache further justification: {}, hash:{}", index, response.hash);
+                        self.justifications.cache(who.clone(), response.hash, response.justification);
+                    }
                 }
             }
         }
@@ -785,12 +816,12 @@ impl<B: BlockT> ChainSync<B> {
         for peer in peers {
             self.download_new(protocol, peer);
         }
-        self.justifications.dispatch(&mut self.peers, protocol);
+        self.justifications.dispatch(&mut self.peers, protocol, &*self.import_queue);
     }
 
     /// Called periodically to perform any time-based actions.
     pub fn tick(&mut self, protocol: &mut Context<B>) {
-        self.justifications.dispatch(&mut self.peers, protocol);
+        self.justifications.dispatch(&mut self.peers, protocol, &*self.import_queue);
     }
 
     /// Request a justification for the given block.
@@ -803,7 +834,7 @@ impl<B: BlockT> ChainSync<B> {
             |base, block| protocol.client().is_descendent_of(base, block),
         );
 
-        self.justifications.dispatch(&mut self.peers, protocol);
+        self.justifications.dispatch(&mut self.peers, protocol, &*self.import_queue);
     }
 
     /// Clears all pending justification requests.
@@ -998,7 +1029,7 @@ impl<B: BlockT> ChainSync<B> {
 
     // Download old block with known parent.
     fn download_stale(&mut self, protocol: &mut Context<B>, who: PeerId, hash: &B::Hash) {
-        if !self.should_download(protocol) {
+        if !self.should_download(protocol).0 {
             return;
         }
         if let Some(ref mut peer) = self.peers.get_mut(&who) {
@@ -1022,7 +1053,7 @@ impl<B: BlockT> ChainSync<B> {
 
     // Download old block with unknown parent.
     fn download_unknown_stale(&mut self, protocol: &mut Context<B>, who: PeerId, hash: &B::Hash) {
-        if !self.should_download(protocol) {
+        if !self.should_download(protocol).0 {
             return;
         }
         if let Some(ref mut peer) = self.peers.get_mut(&who) {
@@ -1046,7 +1077,8 @@ impl<B: BlockT> ChainSync<B> {
 
     // Issue a request for a peer to download new blocks, if any are available
     fn download_new(&mut self, protocol: &mut Context<B>, who: PeerId) {
-        if !self.should_download(protocol) {
+        let (should_download, leading_number) = self.should_download(protocol);
+        if !should_download {
             return;
         }
         if let Some(ref mut peer) = self.peers.get_mut(&who) {
@@ -1058,6 +1090,12 @@ impl<B: BlockT> ChainSync<B> {
             match peer.state {
                 PeerSyncState::Available => {
                     trace!(target: "sync", "Considering new block download from {}, common block is {}, best is {:?}", who, peer.common_number, peer.best_number);
+
+                    if peer.best_number - peer.common_number > As::sa(MAX_LEADING_BLOCKS) && leading_number > Zero::zero() {
+                        trace!(target: "sync", "Too much behind, pause best block syncing.");
+                        return;
+                    }
+
                     if let Some(range) = self.blocks.needed_blocks(who.clone(), MAX_BLOCKS_TO_REQUEST, peer.best_number, peer.common_number) {
                         trace!(target: "sync", "Requesting blocks from {}, ({} to {})", who, range.start, range.end);
                         let request = message::generic::BlockRequest {
@@ -1079,7 +1117,7 @@ impl<B: BlockT> ChainSync<B> {
         }
     }
 
-    fn should_download(&self, protocol: &mut Context<B>) -> bool {
+    fn should_download(&self, protocol: &Context<B>) -> (bool, NumberFor<B>) {
 
         let info = protocol.client().info().expect("should always get client info");
         let best_number = info.chain.best_number;
@@ -1094,7 +1132,7 @@ impl<B: BlockT> ChainSync<B> {
         let should_download = leading_number < As::sa(MAX_LEADING_BLOCKS);
         debug!(target: "sync", "Check before download: best_queued_number: {}, finalized_number: {},\
          leading_number: {}, should_download: {}", best_number, finalized_number, leading_number, should_download);
-        should_download
+        (should_download, leading_number)
     }
 
     fn request_ancestry(protocol: &mut Context<B>, who: PeerId, block: NumberFor<B>) {
