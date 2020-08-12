@@ -34,6 +34,7 @@ use crate::config::Roles;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use lru_cache::LruCache;
 
 // Maximum blocks to request in a single packet.
 const MAX_BLOCKS_TO_REQUEST: usize = 128;
@@ -49,6 +50,8 @@ const ANNOUNCE_HISTORY_SIZE: usize = 64;
 const MAX_UNKNOWN_FORK_DOWNLOAD_LEN: u32 = 32;
 // Max leading blocks.
 const MAX_LEADING_BLOCKS: u64 = 128;
+// Max justifications to request
+const MAX_JUSTIFICATION_TO_REQUEST: u32 = 128;
 
 #[derive(Debug)]
 struct PeerSync<B: BlockT> {
@@ -101,6 +104,7 @@ struct PendingJustifications<B: BlockT> {
     peer_requests: HashMap<PeerId, PendingJustification<B>>,
     previous_requests: HashMap<PendingJustification<B>, Vec<(PeerId, Instant)>>,
     importing_requests: HashSet<PendingJustification<B>>,
+    justifications_cache: LruCache<B::Hash, (PeerId, Justification)>,
 }
 
 impl<B: BlockT> PendingJustifications<B> {
@@ -111,6 +115,7 @@ impl<B: BlockT> PendingJustifications<B> {
             peer_requests: HashMap::new(),
             previous_requests: HashMap::new(),
             importing_requests: HashSet::new(),
+            justifications_cache: LruCache::new(MAX_JUSTIFICATION_TO_REQUEST as usize),
         }
     }
 
@@ -199,7 +204,7 @@ impl<B: BlockT> PendingJustifications<B> {
                 from: message::FromBlock::Hash(request.0),
                 to: None,
                 direction: message::Direction::Ascending,
-                max: Some(1),
+                max: Some(MAX_JUSTIFICATION_TO_REQUEST),
             };
 
             protocol.send_block_request(peer, request);
@@ -303,6 +308,17 @@ impl<B: BlockT> PendingJustifications<B> {
                 .push((who, Instant::now()));
 
             self.pending_requests.push_front(request);
+        }
+    }
+
+    fn cache(
+        &mut self,
+        who: PeerId,
+        hash: B::Hash,
+        justification: Option<Justification>,
+    ) {
+        if let Some(justification) = justification {
+            self.justifications_cache.insert(hash, (who, justification));
         }
     }
 
@@ -721,9 +737,20 @@ impl<B: BlockT> ChainSync<B> {
             if let PeerSyncState::DownloadingJustification(hash) = peer.state {
                 peer.state = PeerSyncState::Available;
 
-                // we only request one justification at a time
-                match response.blocks.into_iter().next() {
-                    Some(response) => {
+                let count = response.blocks.len();
+                if count == 0 {
+                    // we might have asked the peer for a justification on a block that we thought it had
+                    // (regardless of whether it had a justification for it or not).
+                    trace!(target: "sync", "Peer {:?} provided empty response for justification request {:?}",
+                           who,
+                           hash,
+                    );
+                    return;
+                }
+
+                for (index, response) in response.blocks.into_iter().enumerate() {
+                    // we only process the first one
+                    if index == 0 {
                         if hash != response.hash {
                             let msg = format!(
                                 "Invalid block justification provided: requested: {:?} got: {:?}",
@@ -731,25 +758,19 @@ impl<B: BlockT> ChainSync<B> {
                                 response.hash,
                             );
 
-                            protocol.report_peer(who, Severity::Bad(msg));
+                            protocol.report_peer(who.clone(), Severity::Bad(msg));
                             return;
                         }
-
                         self.justifications.on_response(
-                            who,
+                            who.clone(),
                             response.justification,
                             &*self.import_queue,
                         );
-					},
-                    None => {
-                        // we might have asked the peer for a justification on a block that we thought it had
-                        // (regardless of whether it had a justification for it or not).
-                        trace!(target: "sync", "Peer {:?} provided empty response for justification request {:?}",
-                               who,
-                               hash,
-                        );
-                        return;
-					},
+
+                    }else{
+                        trace!(target: "sync", "Cache further justification: {}, hash:{}", index, response.hash);
+                        self.justifications.cache(who.clone(), response.hash, response.justification);
+                    }
                 }
             }
         }
