@@ -129,14 +129,18 @@ impl<B: BlockT> PendingJustifications<B> {
     fn dispatch(&mut self, peers: &mut HashMap<PeerId, PeerSync<B>>, protocol: &mut Context<B>, import_queue: &ImportQueue<B>,) {
 
         // recover timeout peer requests
+        let mut set_pendings = Vec::new();
         self.peer_requests.retain(|k, v| {
             let retain = v.1.elapsed() < JUSTIFICATION_REQUEST_TIMEOUT;
             if !retain {
-                trace!(target: "sync", "Set pending after timeout for block #{}", v.0.0);
-                self.pending_requests.push_front(v.0.clone());
+                trace!(target: "sync", "Set pending after timeout for block #{}", (v.0).0);
+                set_pendings.push(v.0.clone());
             }
             retain
         });
+        for request in set_pendings.into_iter() {
+            self.pending_requests.push_front(request);
+        }
 
         println!("pending requests: {:?}", self.pending_requests);
         if self.pending_requests.is_empty() {
