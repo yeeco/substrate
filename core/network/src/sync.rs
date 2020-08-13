@@ -125,6 +125,7 @@ impl<B: BlockT> PendingJustifications<B> {
     /// throttle requests to the same peer if a previous justification request
     /// yielded no results.
     fn dispatch(&mut self, peers: &mut HashMap<PeerId, PeerSync<B>>, protocol: &mut Context<B>, import_queue: &ImportQueue<B>,) {
+        println!("pending requests len: {}", self.peer_requests.len());
         if self.pending_requests.is_empty() {
             return;
         }
@@ -302,6 +303,7 @@ impl<B: BlockT> PendingJustifications<B> {
         justification: Option<Justification>,
         import_queue: &ImportQueue<B>,
     ) {
+        return;
         // we assume that the request maps to the given response, this is
         // currently enforced by the outer network protocol before passing on
         // messages to chain sync.
@@ -327,6 +329,7 @@ impl<B: BlockT> PendingJustifications<B> {
         hash: B::Hash,
         justification: Option<Justification>,
     ) {
+        return;
         if let Some(justification) = justification {
             self.justifications_cache.insert(hash, (who, justification));
         }
