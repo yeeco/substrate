@@ -125,7 +125,7 @@ impl<B: BlockT> PendingJustifications<B> {
     /// throttle requests to the same peer if a previous justification request
     /// yielded no results.
     fn dispatch(&mut self, peers: &mut HashMap<PeerId, PeerSync<B>>, protocol: &mut Context<B>, import_queue: &ImportQueue<B>,) {
-        println!("pending requests: {:?}", self.peer_requests);
+        println!("pending requests: {:?}", self.pending_requests);
         if self.pending_requests.is_empty() {
             return;
         }
