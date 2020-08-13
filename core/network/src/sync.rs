@@ -125,7 +125,7 @@ impl<B: BlockT> PendingJustifications<B> {
     /// throttle requests to the same peer if a previous justification request
     /// yielded no results.
     fn dispatch(&mut self, peers: &mut HashMap<PeerId, PeerSync<B>>, protocol: &mut Context<B>, import_queue: &ImportQueue<B>,) {
-        println!("pending requests len: {}", self.peer_requests.len());
+        println!("pending requests: {:?}", self.peer_requests);
         if self.pending_requests.is_empty() {
             return;
         }
@@ -238,6 +238,7 @@ impl<B: BlockT> PendingJustifications<B> {
         match self.justifications.import(justification.0.clone(), justification.1.clone(), (), &is_descendent_of) {
             Ok(true) => {
                 // this is a new root so we add it to the current `pending_requests`
+                println!("queue_request: {:?}", (justification.0, justification.1));
                 self.pending_requests.push_back((justification.0, justification.1));
 			},
             Err(err) => {
@@ -255,6 +256,7 @@ impl<B: BlockT> PendingJustifications<B> {
     /// Retry any pending request if a peer disconnected.
     fn peer_disconnected(&mut self, who: PeerId) {
         if let Some(request) = self.peer_requests.remove(&who) {
+            println!("peer_disconnected : {:?}", request);
             self.pending_requests.push_front(request);
         }
     }
@@ -291,6 +293,7 @@ impl<B: BlockT> PendingJustifications<B> {
 
             return;
         }
+        println!("justification_import_result : {:?}", request);
         self.pending_requests.push_front(request);
     }
 
