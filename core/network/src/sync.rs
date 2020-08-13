@@ -142,7 +142,6 @@ impl<B: BlockT> PendingJustifications<B> {
             self.pending_requests.push_front(request);
         }
 
-        println!("pending requests: {:?}", self.pending_requests);
         if self.pending_requests.is_empty() {
             return;
         }
@@ -255,7 +254,6 @@ impl<B: BlockT> PendingJustifications<B> {
         match self.justifications.import(justification.0.clone(), justification.1.clone(), (), &is_descendent_of) {
             Ok(true) => {
                 // this is a new root so we add it to the current `pending_requests`
-                println!("queue_request: {:?}", (justification.0, justification.1));
                 self.pending_requests.push_back((justification.0, justification.1));
 			},
             Err(err) => {
@@ -273,7 +271,6 @@ impl<B: BlockT> PendingJustifications<B> {
     /// Retry any pending request if a peer disconnected.
     fn peer_disconnected(&mut self, who: PeerId) {
         if let Some(request) = self.peer_requests.remove(&who) {
-            println!("peer_disconnected : {:?}", request);
             self.pending_requests.push_front(request.0);
         }
     }
@@ -310,7 +307,6 @@ impl<B: BlockT> PendingJustifications<B> {
 
             return;
         }
-        println!("justification_import_result : {:?}", request);
         self.pending_requests.push_front(request);
     }
 
@@ -323,7 +319,6 @@ impl<B: BlockT> PendingJustifications<B> {
         justification: Option<Justification>,
         import_queue: &ImportQueue<B>,
     ) {
-        return;
         // we assume that the request maps to the given response, this is
         // currently enforced by the outer network protocol before passing on
         // messages to chain sync.
@@ -349,7 +344,6 @@ impl<B: BlockT> PendingJustifications<B> {
         hash: B::Hash,
         justification: Option<Justification>,
     ) {
-        return;
         if let Some(justification) = justification {
             self.justifications_cache.insert(hash, (who, justification));
         }
