@@ -324,10 +324,13 @@ impl<B: BlockT> ConsensusGossip<B> {
 					return None;
 				},
 				None => {
+					//should not drop peer
+					/*
 					protocol.report_peer(
 						who.clone(),
 						Severity::Useless(format!("Sent unknown consensus engine id")),
 					);
+					*/
 					trace!(target:"gossip", "Unknown message engine id {:?} from {}",
 						engine_id, who);
 					return None;

@@ -475,9 +475,7 @@ impl<B: BlockT, S: network::specialization::NetworkSpecialization<B>, I: network
 	pub fn new(service: Arc<NetworkService<B, S, I>>) -> Self {
 		let validator = Arc::new(GossipValidator::new());
 		let v = validator.clone();
-		println!("with_gossip");
 		service.with_gossip(move |gossip, _| {
-			println!("register_validator");
 			gossip.register_validator(GRANDPA_ENGINE_ID, v);
 		});
 		NetworkBridge { service, validator: validator }
