@@ -1113,7 +1113,10 @@ impl<B: BlockT> ChainSync<B> {
                         return;
                     }
 
-                    if let Some(range) = self.blocks.needed_blocks(who.clone(), MAX_BLOCKS_TO_REQUEST, peer.best_number, peer.common_number) {
+                    let leading_number = <NumberFor<B> as As<u64>>::as_(leading_number);
+                    let max_to_request = if MAX_LEADING_BLOCKS >= leading_number { MAX_LEADING_BLOCKS - leading_number } else { 0 };
+                    let count = ::std::cmp::min( max_to_request as usize, MAX_BLOCKS_TO_REQUEST);
+                    if let Some(range) = self.blocks.needed_blocks(who.clone(), count, peer.best_number, peer.common_number) {
                         trace!(target: "sync", "Requesting blocks from {}, ({} to {})", who, range.start, range.end);
                         let request = message::generic::BlockRequest {
                             id: 0,
