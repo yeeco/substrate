@@ -1108,10 +1108,10 @@ impl<B: BlockT> ChainSync<B> {
                 PeerSyncState::Available => {
                     trace!(target: "sync", "Considering new block download from {}, common block is {}, best is {:?}", who, peer.common_number, peer.best_number);
 
-                    if peer.best_number - peer.common_number > As::sa(MAX_LEADING_BLOCKS) && leading_number > Zero::zero() {
-                        trace!(target: "sync", "Too much behind, pause best block syncing.");
-                        return;
-                    }
+                    // if peer.best_number - peer.common_number > As::sa(MAX_LEADING_BLOCKS) && leading_number > Zero::zero() {
+                    //     trace!(target: "sync", "Too much behind, pause best block syncing.");
+                    //     return;
+                    // }
 
                     let leading_number = <NumberFor<B> as As<u64>>::as_(leading_number);
                     let max_to_request = if MAX_LEADING_BLOCKS >= leading_number { MAX_LEADING_BLOCKS - leading_number } else { 0 };
