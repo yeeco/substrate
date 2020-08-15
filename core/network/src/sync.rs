@@ -1088,7 +1088,7 @@ impl<B: BlockT> ChainSync<B> {
 
     // Issue a request for a peer to download new blocks, if any are available
     fn download_new(&mut self, protocol: &mut Context<B>, who: PeerId) {
-        let (should_download, max_to_download) = self.should_download(protocol);
+        let (should_download, leading_number, max_to_download) = self.should_download(protocol);
         if !should_download {
             return;
         }
@@ -1102,12 +1102,12 @@ impl<B: BlockT> ChainSync<B> {
                 PeerSyncState::Available => {
                     trace!(target: "sync", "Considering new block download from {}, common block is {}, best is {:?}", who, peer.common_number, peer.best_number);
 
-                    if peer.best_number - peer.common_number > As::sa(MAX_LEADING_BLOCKS) && leading_number > Zero::zero() {
+                    if peer.best_number - peer.common_number > As::sa(MAX_LEADING_BLOCKS) && leading_number > 0 {
                         trace!(target: "sync", "Too much behind, pause best block syncing.");
                         return;
                     }
 
-                    let count = ::std::cmp::min( max_to_download, MAX_BLOCKS_TO_REQUEST);
+                    let count = ::std::cmp::min( max_to_download as usize, MAX_BLOCKS_TO_REQUEST);
                     if let Some(range) = self.blocks.needed_blocks(who.clone(), count, peer.best_number, peer.common_number) {
                         trace!(target: "sync", "Requesting blocks from {}, ({} to {})", who, range.start, range.end);
                         let request = message::generic::BlockRequest {
@@ -1129,7 +1129,7 @@ impl<B: BlockT> ChainSync<B> {
         }
     }
 
-    fn should_download(&self, protocol: &Context<B>) -> (bool, usize) {
+    fn should_download(&self, protocol: &Context<B>) -> (bool, u64, u64) {
 
         let info = protocol.client().info().expect("should always get client info");
         let best_number = info.chain.best_number;
@@ -1145,10 +1145,9 @@ impl<B: BlockT> ChainSync<B> {
 
         let leading_number = <NumberFor<B> as As<u64>>::as_(leading_number);
         let max_to_download = if MAX_LEADING_BLOCKS >= leading_number { MAX_LEADING_BLOCKS - leading_number } else { 0 };
-        let max_to_download = max_to_download as usize;
         debug!(target: "sync", "Check before download: best_queued_number: {}, finalized_number: {},\
          leading_number: {}, should_download: {}, max_to_download: {}", best_number, finalized_number, leading_number, should_download, max_to_download);
-        (should_download, max_to_download)
+        (should_download, leading_number, max_to_download)
     }
 
     fn request_ancestry(protocol: &mut Context<B>, who: PeerId, block: NumberFor<B>) {
