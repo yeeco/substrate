@@ -196,6 +196,9 @@ pub trait JustificationImport<B: BlockT> {
 	/// Called by the import queue when it is started.
 	fn on_start(&self, _link: &crate::import_queue::Link<B>) { }
 
+	/// Called by the import queue when it is periodic tick.
+	fn on_tick(&self, _link: &crate::import_queue::Link<B>) { }
+
 	/// Import a Block justification and finalize the given block.
 	fn import_justification(
 		&self,
