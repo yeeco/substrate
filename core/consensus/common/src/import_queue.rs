@@ -32,6 +32,7 @@ use parity_codec::Encode;
 
 use std::sync::Arc;
 use std::thread;
+use std::time;
 
 use runtime_primitives::traits::{
 	AuthorityIdFor, Block as BlockT, Header as HeaderT, NumberFor
@@ -49,6 +50,9 @@ pub type SharedJustificationImport<B> = Arc<dyn JustificationImport<B, Error=Con
 
 /// Maps to the Origin used by the network.
 pub type Origin = libp2p::PeerId;
+
+/// Interval at which we perform time based maintenance
+const TICK_TIMEOUT: time::Duration = time::Duration::from_millis(1000);
 
 /// Block data used by the queue.
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -205,6 +209,7 @@ pub enum BlockImportMsg<B: BlockT> {
 	ImportBlocks(BlockOrigin, Vec<IncomingBlock<B>>),
 	ImportJustification(Origin, B::Hash, NumberFor<B>, Justification),
 	Start(Box<Link<B>>, Sender<Result<(), std::io::Error>>),
+	Tick,
 	Stop,
 	#[cfg(any(test, feature = "test-helpers"))]
 	Synchronize,
@@ -252,7 +257,8 @@ impl<B: BlockT> BlockImporter<B> {
 					link: None,
 					justification_import,
 				};
-				while importer.run() {
+				let tick_timeout = channel::tick(TICK_TIMEOUT);
+				while importer.run(&tick_timeout) {
 					// Importing until all senders have been dropped...
 				}
 			})
@@ -260,7 +266,7 @@ impl<B: BlockT> BlockImporter<B> {
 		sender
 	}
 
-	fn run(&mut self) -> bool {
+	fn run(&mut self, tick_timeout: &Receiver<time::Instant>) -> bool {
 		let msg = select! {
 			recv(self.port) -> msg => {
 				match msg {
@@ -274,7 +280,10 @@ impl<B: BlockT> BlockImporter<B> {
 					Err(_) => unreachable!("1. We hold a sender to the Worker, 2. it should not quit until that sender is dropped; qed"),
 					Ok(msg) => ImportMsgType::FromWorker(msg),
 				}
-			}
+			},
+			recv(tick_timeout) -> _ => {
+				ImportMsgType::FromNetwork(BlockImportMsg::Tick)
+			},
 		};
 		match msg {
 			ImportMsgType::FromNetwork(msg) => self.handle_network_msg(msg),
@@ -296,6 +305,11 @@ impl<B: BlockT> BlockImporter<B> {
 				}
 				self.link = Some(link);
 				let _ = sender.send(Ok(()));
+			},
+			BlockImportMsg::Tick => {
+				if let Some(justification_import) = self.justification_import.as_ref() {
+					justification_import.on_tick();
+				}
 			},
 			BlockImportMsg::Stop => return false,
 			#[cfg(any(test, feature = "test-helpers"))]
