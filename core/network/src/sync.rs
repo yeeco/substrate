@@ -252,6 +252,7 @@ impl<B: BlockT> PendingJustifications<B> {
         &mut self,
         justification: &PendingJustification<B>,
         is_descendent_of: F,
+        force: bool,
     ) where F: Fn(&B::Hash, &B::Hash) -> Result<bool, ClientError> {
         match self.justifications.import(justification.0.clone(), justification.1.clone(), (), &is_descendent_of) {
             Ok(true) => {
@@ -264,6 +265,17 @@ impl<B: BlockT> PendingJustifications<B> {
                       justification.1,
                       err,
                 );
+
+                if force {
+                    let in_root = self.justifications.roots().find(|(&hash, &number, data)| {
+                        justification.0 == hash && justification.1 == number
+                    });
+                    info!(target: "sync", "Force queueing request: {:?}", in_root);
+                    if let Some((hash, number, data)) = in_root {
+                        self.pending_requests.push_back((*hash, *number));
+                    }
+                }
+
                 return;
 			},
 			_ => {},
@@ -321,6 +333,7 @@ impl<B: BlockT> PendingJustifications<B> {
         justification: Option<Justification>,
         import_queue: &ImportQueue<B>,
     ) {
+        return;
         // we assume that the request maps to the given response, this is
         // currently enforced by the outer network protocol before passing on
         // messages to chain sync.
@@ -851,6 +864,7 @@ impl<B: BlockT> ChainSync<B> {
         self.justifications.queue_request(
             &(*hash, number),
             |base, block| protocol.client().is_descendent_of(base, block),
+            force,
         );
 
         self.justifications.dispatch(&mut self.peers, protocol, &*self.import_queue);
