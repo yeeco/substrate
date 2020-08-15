@@ -308,7 +308,8 @@ impl<B: BlockT> BlockImporter<B> {
 			},
 			BlockImportMsg::Tick => {
 				if let Some(justification_import) = self.justification_import.as_ref() {
-					justification_import.on_tick();
+					let link = self.link.as_ref().expect("qed");
+					justification_import.on_tick(&**link);
 				}
 			},
 			BlockImportMsg::Stop => return false,

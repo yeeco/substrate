@@ -52,8 +52,6 @@ const MAX_UNKNOWN_FORK_DOWNLOAD_LEN: u32 = 32;
 const MAX_LEADING_BLOCKS: u64 = 128;
 // Max justifications to request
 const MAX_JUSTIFICATION_TO_REQUEST: u32 = 128;
-// Justification request timeout
-const JUSTIFICATION_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug)]
 struct PeerSync<B: BlockT> {
@@ -103,7 +101,7 @@ type PendingJustification<B> = (<B as BlockT>::Hash, NumberFor<B>);
 struct PendingJustifications<B: BlockT> {
     justifications: ForkTree<B::Hash, NumberFor<B>, ()>,
     pending_requests: VecDeque<PendingJustification<B>>,
-    peer_requests: HashMap<PeerId, (PendingJustification<B>, Instant)>,
+    peer_requests: HashMap<PeerId, PendingJustification<B>>,
     previous_requests: HashMap<PendingJustification<B>, Vec<(PeerId, Instant)>>,
     importing_requests: HashSet<PendingJustification<B>>,
     justifications_cache: LruCache<B::Hash, (PeerId, Justification)>,
@@ -127,21 +125,6 @@ impl<B: BlockT> PendingJustifications<B> {
     /// throttle requests to the same peer if a previous justification request
     /// yielded no results.
     fn dispatch(&mut self, peers: &mut HashMap<PeerId, PeerSync<B>>, protocol: &mut Context<B>, import_queue: &ImportQueue<B>,) {
-
-        // recover timeout peer requests
-        let mut set_pendings = Vec::new();
-        self.peer_requests.retain(|k, v| {
-            let retain = v.1.elapsed() < JUSTIFICATION_REQUEST_TIMEOUT;
-            if !retain {
-                trace!(target: "sync", "Set pending after timeout for block #{}", (v.0).0);
-                set_pendings.push(v.0.clone());
-            }
-            retain
-        });
-        for request in set_pendings.into_iter() {
-            self.pending_requests.push_front(request);
-        }
-
         if self.pending_requests.is_empty() {
             return;
         }
@@ -217,7 +200,7 @@ impl<B: BlockT> PendingJustifications<B> {
 
             } else{
                 // need request from remote peer
-                self.peer_requests.insert(peer.clone(), (request, Instant::now()));
+                self.peer_requests.insert(peer.clone(), request);
 
                 peers.get_mut(&peer)
                     .expect("peer was is taken from available_peers; available_peers is a subset of peers; qed")
@@ -271,7 +254,7 @@ impl<B: BlockT> PendingJustifications<B> {
     /// Retry any pending request if a peer disconnected.
     fn peer_disconnected(&mut self, who: PeerId) {
         if let Some(request) = self.peer_requests.remove(&who) {
-            self.pending_requests.push_front(request.0);
+            self.pending_requests.push_front(request);
         }
     }
 
@@ -322,7 +305,7 @@ impl<B: BlockT> PendingJustifications<B> {
         // we assume that the request maps to the given response, this is
         // currently enforced by the outer network protocol before passing on
         // messages to chain sync.
-        if let Some((request, _)) = self.peer_requests.remove(&who) {
+        if let Some(request) = self.peer_requests.remove(&who) {
             if let Some(justification) = justification {
                 import_queue.import_justification(who.clone(), request.0, request.1, justification);
                 self.importing_requests.insert(request);
@@ -370,7 +353,7 @@ impl<B: BlockT> PendingJustifications<B> {
         let roots = self.justifications.roots().collect::<HashSet<_>>();
 
         self.pending_requests.retain(|(h, n)| roots.contains(&(h, n, &())));
-        self.peer_requests.retain(|_, ((h, n), _)| roots.contains(&(h, n, &())));
+        self.peer_requests.retain(|_, (h, n)| roots.contains(&(h, n, &())));
         self.previous_requests.retain(|(h, n), _| roots.contains(&(h, n, &())));
 
         Ok(())
