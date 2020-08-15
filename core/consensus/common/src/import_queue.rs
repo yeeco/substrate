@@ -366,7 +366,7 @@ impl<B: BlockT> BlockImporter<B> {
 
 					if aux.needs_justification {
 						trace!(target: "sync", "Block imported but requires justification {}: {:?}", number, hash);
-						link.request_justification(&hash, number);
+						link.request_justification(&hash, number, false);
 					}
 
 					if aux.bad_justification {
@@ -522,7 +522,7 @@ pub trait Link<B: BlockT>: Send {
 	/// Clear all pending justification requests.
 	fn clear_justification_requests(&self) {}
 	/// Request a justification for the given block.
-	fn request_justification(&self, _hash: &B::Hash, _number: NumberFor<B>) {}
+	fn request_justification(&self, _hash: &B::Hash, _number: NumberFor<B>, _force: bool) {}
 	/// Disconnect from peer.
 	fn useless_peer(&self, _who: Origin, _reason: &str) {}
 	/// Disconnect from peer and restart sync.

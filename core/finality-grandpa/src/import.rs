@@ -97,7 +97,7 @@ impl<B, E, Block: BlockT<Hash=H256>, RA, PRA> JustificationImport<Block>
 				if let Ok(Some(hash)) = effective_block_hash {
 					if let Ok(Some(header)) = self.inner.header(&BlockId::Hash(hash)) {
 						if *header.number() == pending_change.effective_number() {
-							link.request_justification(&header.hash(), *header.number());
+							link.request_justification(&header.hash(), *header.number(), false);
 						}
 					}
 				}
