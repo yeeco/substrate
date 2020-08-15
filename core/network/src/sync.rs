@@ -333,7 +333,6 @@ impl<B: BlockT> PendingJustifications<B> {
         justification: Option<Justification>,
         import_queue: &ImportQueue<B>,
     ) {
-        return;
         // we assume that the request maps to the given response, this is
         // currently enforced by the outer network protocol before passing on
         // messages to chain sync.
