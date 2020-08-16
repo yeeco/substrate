@@ -132,7 +132,7 @@ impl<B: BlockT> PendingJustifications<B> {
         self.peer_requests.retain(|k, v| {
             let retain = v.1.elapsed() < JUSTIFICATION_REQUEST_TIMEOUT;
             if !retain {
-                info!(target: "sync", "Recover justification request after timeout for block ({}, {})", (v.0).1, (v.0).0);
+                info!(target: "sync", "Recover justification request after timeout for block ({}, {}) on peer: {}", (v.0).1, (v.0).0, k);
                 recover_list.push((k.clone(), v.0.clone()));
             }
             retain
