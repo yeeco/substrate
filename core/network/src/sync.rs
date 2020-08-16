@@ -132,7 +132,7 @@ impl<B: BlockT> PendingJustifications<B> {
         self.peer_requests.retain(|k, v| {
             let retain = v.1.elapsed() < JUSTIFICATION_REQUEST_TIMEOUT;
             if !retain {
-                info!(target: "sync", "recover request after timeout for block #{}", (v.0).0);
+                info!(target: "sync", "Recover justification request after timeout for block ({}, {}) on peer: {}", (v.0).1, (v.0).0, k);
                 recover_list.push((k.clone(), v.0.clone()));
             }
             retain
@@ -269,10 +269,17 @@ impl<B: BlockT> PendingJustifications<B> {
                 if force {
                     let in_root = self.justifications.roots().find(|(&hash, &number, data)| {
                         justification.0 == hash && justification.1 == number
-                    });
-                    info!(target: "sync", "Force queueing request: {:?}", in_root);
-                    if let Some((hash, number, data)) = in_root {
-                        self.pending_requests.push_back((*hash, *number));
+                    }).is_some();
+                    if in_root {
+                        let in_pending = self.pending_requests.contains(&justification);
+                        let in_peer = self.peer_requests.iter().find(|(_, (j, _))| {
+                            justification == j
+                        }).is_some();
+
+                        info!(target: "sync", "Force queueing request: {:?}, in_pending: {}, in_peer: {}", justification, in_pending, in_peer);
+                        if !in_pending && !in_peer {
+                            self.pending_requests.push_back((justification.0, justification.1));
+                        }
                     }
                 }
 
