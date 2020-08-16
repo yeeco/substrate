@@ -291,6 +291,7 @@ impl<B: BlockT> PendingJustifications<B> {
 
     /// Retry any pending request if a peer disconnected.
     fn peer_disconnected(&mut self, who: PeerId) {
+        return;
         if let Some(request) = self.peer_requests.remove(&who) {
             self.pending_requests.push_front(request.0);
         }
