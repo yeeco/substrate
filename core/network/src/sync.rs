@@ -141,7 +141,7 @@ impl<B: BlockT> PendingJustifications<B> {
             peers.get_mut(&peerId).map(|x|{
                 x.state = PeerSyncState::Available;
             });
-            self.pending_requests.push_front(request);
+            self.pending_requests.push_back(request);
         }
 
         if self.pending_requests.is_empty() {
