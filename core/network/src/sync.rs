@@ -30,7 +30,7 @@ use runtime_primitives::{Justification, Proof};
 use runtime_primitives::traits::{Block as BlockT, Header as HeaderT, As, NumberFor, Zero, CheckedSub};
 use runtime_primitives::generic::BlockId;
 use crate::message;
-use crate::config::Roles;
+use crate::config::{Roles, ProtocolConfig};
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -48,8 +48,6 @@ const JUSTIFICATION_RETRY_WAIT: Duration = Duration::from_secs(10);
 const ANNOUNCE_HISTORY_SIZE: usize = 64;
 // Max number of blocks to download for unknown forks.
 const MAX_UNKNOWN_FORK_DOWNLOAD_LEN: u32 = 32;
-// Max leading blocks.
-const MAX_LEADING_BLOCKS: u64 = 128;
 // Max justifications to request
 const MAX_JUSTIFICATION_TO_REQUEST: u32 = 128;
 // Justification request timeout
@@ -432,6 +430,7 @@ pub struct ChainSync<B: BlockT> {
     is_stopping: AtomicBool,
     is_offline: Arc<AtomicBool>,
     is_major_syncing: Arc<AtomicBool>,
+    max_leading_blocks: u64,
 }
 
 /// Reported sync state.
@@ -475,12 +474,12 @@ impl<B: BlockT> ChainSync<B> {
     pub(crate) fn new(
         is_offline: Arc<AtomicBool>,
         is_major_syncing: Arc<AtomicBool>,
-        role: Roles,
+        config: ProtocolConfig,
         info: &ClientInfo<B>,
 		import_queue: Box<ImportQueue<B>>
     ) -> Self {
         let mut required_block_attributes = message::BlockAttributes::HEADER | message::BlockAttributes::JUSTIFICATION | message::BlockAttributes::PROOF;
-        if role.intersects(Roles::FULL | Roles::AUTHORITY) {
+        if config.roles.intersects(Roles::FULL | Roles::AUTHORITY) {
             required_block_attributes |= message::BlockAttributes::BODY;
         }
 
@@ -498,6 +497,7 @@ impl<B: BlockT> ChainSync<B> {
             is_stopping: Default::default(),
             is_offline,
             is_major_syncing,
+            max_leading_blocks: config.max_leading_blocks,
         }
     }
 
@@ -1124,7 +1124,7 @@ impl<B: BlockT> ChainSync<B> {
                 PeerSyncState::Available => {
                     trace!(target: "sync", "Considering new block download from {}, common block is {}, best is {:?}", who, peer.common_number, peer.best_number);
 
-                    if peer.common_number >= best_number && (peer.best_number > best_number + As::sa(MAX_LEADING_BLOCKS)) && leading_number > 0 {
+                    if peer.common_number >= best_number && (peer.best_number > best_number + As::sa(self.max_leading_blocks)) && leading_number > 0 {
                         debug!(target: "sync", "Too much behind, pause best block syncing.");
                         return;
                     }
@@ -1164,10 +1164,10 @@ impl<B: BlockT> ChainSync<B> {
         } else {
             Zero::zero()
         };
-        let should_download = leading_number < As::sa(MAX_LEADING_BLOCKS);
+        let should_download = leading_number < As::sa(self.max_leading_blocks);
 
         let leading_number = <NumberFor<B> as As<u64>>::as_(leading_number);
-        let max_to_download = if MAX_LEADING_BLOCKS >= leading_number { MAX_LEADING_BLOCKS - leading_number } else { 0 };
+        let max_to_download = if self.max_leading_blocks >= leading_number { self.max_leading_blocks - leading_number } else { 0 };
         debug!(target: "sync", "Check before download: best_queued_number: {}, finalized_number: {},\
          leading_number: {}, should_download: {}, max_to_download: {}", best_number, finalized_number, leading_number, should_download, max_to_download);
         (should_download, leading_number, max_to_download, best_number, finalized_number)

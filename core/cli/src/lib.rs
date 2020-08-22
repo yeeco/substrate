@@ -493,6 +493,7 @@ where
 	}
 
 	config.force_authoring = cli.force_authoring;
+	config.max_leading_blocks = cli.max_leading_blocks;
 
 	Ok(config)
 }

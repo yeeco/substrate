@@ -302,6 +302,8 @@ impl<Block: BlockT> LightStorage<Block> {
 			trace!(target: "db", "Replacing blocks [{}..{}] with CHT#{}",
 				new_cht_start, new_cht_end, new_cht_number);
 
+			/*
+			// should not prune header for foreign proof
 			while prune_block <= new_cht_end {
 				if let Some(hash) = self.hash(prune_block)? {
 					let lookup_key = block_id_to_lookup_key::<Block>(&*self.db, columns::KEY_LOOKUP, BlockId::Number(prune_block))?
@@ -316,6 +318,7 @@ impl<Block: BlockT> LightStorage<Block> {
 				}
 				prune_block += One::one();
 			}
+			 */
 		}
 
 		let new_displaced = self.leaves.write().finalize_height(header.number().clone());
