@@ -309,7 +309,7 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 		let (protocol_sender, port) = channel::unbounded();
 		let (from_network_sender, from_network_port) = channel::bounded(4);
 		let info = chain.info()?;
-		let sync = ChainSync::new(is_offline, is_major_syncing, config.roles, &info, import_queue);
+		let sync = ChainSync::new(is_offline, is_major_syncing, config.clone(), &info, import_queue);
 		let _ = thread::Builder::new()
 			.name("Protocol".into()).stack_size(1024 * 1024 * 1024)
 			.spawn(move || {

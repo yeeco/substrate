@@ -49,12 +49,16 @@ pub struct Params<B: BlockT, S, H: ExHashT, I> {
 pub struct ProtocolConfig {
 	/// Assigned roles.
 	pub roles: Roles,
+
+	/// Max leading blocks,
+	pub max_leading_blocks: u64,
 }
 
 impl Default for ProtocolConfig {
 	fn default() -> ProtocolConfig {
 		ProtocolConfig {
 			roles: Roles::FULL,
+			max_leading_blocks: 2880,
 		}
 	}
 }

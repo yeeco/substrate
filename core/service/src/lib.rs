@@ -179,7 +179,7 @@ impl<Components: components::Components> Service<Components> {
 		 });
 
 		let network_params = network::config::Params {
-			config: network::config::ProtocolConfig { roles: config.roles },
+			config: network::config::ProtocolConfig { roles: config.roles, max_leading_blocks: config.max_leading_blocks },
 			network_config: config.network.clone(),
 			chain: client.clone(),
 			on_demand: on_demand.as_ref().map(|d| d.clone() as _),
@@ -434,7 +434,7 @@ impl<Components: components::Components> Service<Components> {
 		});
 
 		let network_params = network::config::Params {
-			config: network::config::ProtocolConfig { roles: config.roles },
+			config: network::config::ProtocolConfig { roles: config.roles, max_leading_blocks: config.max_leading_blocks },
 			network_config: config.network.clone(),
 			chain: client.clone(),
 			on_demand: on_demand.as_ref().map(|d| d.clone() as _),
