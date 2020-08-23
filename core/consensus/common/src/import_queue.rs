@@ -250,6 +250,7 @@ impl<B: BlockT> BlockImporter<B> {
 		let (sender, port) = channel::bounded(4);
 		let thread_id = thread_rng().gen_range(0, 65536);
 		let name = format!("ImportQueue-{}", thread_id);
+		info!(target: "sync", "Start thread: {}", name);
 		let _ = thread::Builder::new().stack_size(1024 * 1024 * 1024)
 			.name(name)
 			.spawn(move || {
@@ -441,6 +442,7 @@ impl<B: BlockT, V: 'static + Verifier<B>> BlockImportWorker<B, V> {
 		let (sender, port) = channel::unbounded();
 		let thread_id = thread_rng().gen_range(0, 65536);
 		let name = format!("ImportQueueWorker-{}", thread_id);
+		info!(target: "sync", "Start thread: {}", name);
 		let _ = thread::Builder::new().stack_size(1024 * 1024 * 1024)
 			.name(name)
 			.spawn(move || {

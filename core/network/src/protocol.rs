@@ -313,6 +313,7 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 		let sync = ChainSync::new(is_offline, is_major_syncing, config.clone(), &info, import_queue);
 		let thread_id = thread_rng().gen_range(0, 65536);
 		let name = format!("Protocol-{}", thread_id);
+		info!(target: "sync", "Start thread: {}", name);
 		let _ = thread::Builder::new()
 			.name(name).stack_size(1024 * 1024 * 1024)
 			.spawn(move || {

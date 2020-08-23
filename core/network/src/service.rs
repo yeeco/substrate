@@ -480,6 +480,7 @@ fn start_thread<B: BlockT + 'static, I: IdentifySpecialization>(
 	let peerset_clone = peerset.clone();
 	let thread_id = thread_rng().gen_range(0, 65536);
 	let name = format!("Network-{}", thread_id);
+	info!(target: "sub-libp2p", "Start thread: {}", name);
 	let thread = thread::Builder::new().stack_size(1024 * 1024 * 1024).name(name).spawn(move || {
 		let fut = run_thread(protocol_sender, service_clone, network_port, peerset_clone)
 			.select(close_rx.then(|_| Ok(())))
