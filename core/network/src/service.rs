@@ -35,6 +35,7 @@ use crate::error::Error;
 use runtime_primitives::{traits::{Block as BlockT, NumberFor}, ConsensusEngineId};
 use crate::specialization::NetworkSpecialization;
 use crate::IdentifySpecialization;
+use rand::{thread_rng, Rng};
 
 use tokio::prelude::task::AtomicTask;
 use tokio::runtime::Builder as RuntimeBuilder;
@@ -477,7 +478,9 @@ fn start_thread<B: BlockT + 'static, I: IdentifySpecialization>(
 	let service_clone = service.clone();
 	let mut runtime = RuntimeBuilder::new().name_prefix("libp2p-").build()?;
 	let peerset_clone = peerset.clone();
-	let thread = thread::Builder::new().stack_size(1024 * 1024 * 1024).name("network".to_string()).spawn(move || {
+	let thread_id = thread_rng().gen_range(0, 65536);
+	let name = format!("Network-{}", thread_id);
+	let thread = thread::Builder::new().stack_size(1024 * 1024 * 1024).name(name).spawn(move || {
 		let fut = run_thread(protocol_sender, service_clone, network_port, peerset_clone)
 			.select(close_rx.then(|_| Ok(())))
 			.map(|(val, _)| val)

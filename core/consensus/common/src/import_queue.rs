@@ -33,6 +33,7 @@ use parity_codec::Encode;
 use std::sync::Arc;
 use std::thread;
 use std::time;
+use rand::{thread_rng, Rng};
 
 use runtime_primitives::traits::{
 	AuthorityIdFor, Block as BlockT, Header as HeaderT, NumberFor
@@ -247,8 +248,10 @@ impl<B: BlockT> BlockImporter<B> {
 		justification_import: Option<SharedJustificationImport<B>>,
 	) -> Sender<BlockImportMsg<B>> {
 		let (sender, port) = channel::bounded(4);
+		let thread_id = thread_rng().gen_range(0, 65536);
+		let name = format!("ImportQueue-{}", thread_id);
 		let _ = thread::Builder::new().stack_size(1024 * 1024 * 1024)
-			.name("ImportQueue".into())
+			.name(name)
 			.spawn(move || {
 				let mut importer = BlockImporter {
 					port,
@@ -436,8 +439,10 @@ impl<B: BlockT, V: 'static + Verifier<B>> BlockImportWorker<B, V> {
 		block_import: SharedBlockImport<B>,
 	) -> Sender<BlockImportWorkerMsg<B>> {
 		let (sender, port) = channel::unbounded();
+		let thread_id = thread_rng().gen_range(0, 65536);
+		let name = format!("ImportQueueWorker-{}", thread_id);
 		let _ = thread::Builder::new().stack_size(1024 * 1024 * 1024)
-			.name("ImportQueueWorker".into())
+			.name(name)
 			.spawn(move || {
 				let worker = BlockImportWorker {
 					result_sender,
