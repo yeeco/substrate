@@ -36,7 +36,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::{cmp, num::NonZeroUsize, thread, time};
-use log::{trace, debug, warn};
+use log::{trace, debug, warn, info};
 use crate::chain::Client;
 use client::light::fetcher::ChangesProof;
 use crate::{error, util::LruHashSet};
