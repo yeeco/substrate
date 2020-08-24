@@ -36,10 +36,11 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::{cmp, num::NonZeroUsize, thread, time};
-use log::{trace, debug, warn};
+use log::{trace, debug, warn, info};
 use crate::chain::Client;
 use client::light::fetcher::ChangesProof;
 use crate::{error, util::LruHashSet};
+use rand::{thread_rng, Rng};
 
 const REQUEST_TIMEOUT_SEC: u64 = 40;
 /// Interval at which we perform time based maintenance
@@ -310,8 +311,11 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 		let (from_network_sender, from_network_port) = channel::bounded(4);
 		let info = chain.info()?;
 		let sync = ChainSync::new(is_offline, is_major_syncing, config.clone(), &info, import_queue);
+		let thread_id = thread_rng().gen_range(0, 65536);
+		let name = format!("Protocol-{}", thread_id);
+		info!(target: "sync", "Start thread: {}", name);
 		let _ = thread::Builder::new()
-			.name("Protocol".into()).stack_size(1024 * 1024 * 1024)
+			.name(name).stack_size(1024 * 1024 * 1024)
 			.spawn(move || {
 				let mut protocol = Protocol {
 					status_sinks,
