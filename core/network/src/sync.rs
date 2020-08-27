@@ -793,6 +793,11 @@ impl<B: BlockT> ChainSync<B> {
                            who,
                            hash,
                     );
+                    self.justifications.on_response(
+                        who,
+                        None,
+                        &*self.import_queue,
+                    );
                     return;
                 }
 
