@@ -56,5 +56,6 @@ std = [
 	"trie",
 	"substrate-telemetry",
 	"hash-db",
-	"kvdb"
+	"kvdb",
+	"merkle-light/std"
 ]
