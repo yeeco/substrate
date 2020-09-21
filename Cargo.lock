@@ -3773,7 +3773,6 @@ dependencies = [
  "kvdb 0.1.0 (git+https://github.com/paritytech/parity-common?rev=b0317f649ab2c665b7987b8475878fc4d2e1f81d)",
  "kvdb-memorydb 0.1.0 (git+https://github.com/paritytech/parity-common?rev=b0317f649ab2c665b7987b8475878fc4d2e1f81d)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "merkle_light 0.3.1 (git+https://github.com/yeeco/merkle_light.git?branch=yee-v1.0.4)",
  "parity-codec 3.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "parking_lot 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "sr-api-macros 1.0.0",
@@ -3789,6 +3788,7 @@ dependencies = [
  "substrate-telemetry 1.0.0",
  "substrate-test-client 1.0.0",
  "substrate-trie 1.0.0",
+ "yee-merkle 0.4.0",
 ]
 
 [[package]]
@@ -5269,6 +5269,17 @@ dependencies = [
  "rand 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-codec 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-io 0.1.12 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "yee-merkle"
+version = "0.4.0"
+dependencies = [
+ "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "merkle_light 0.3.1 (git+https://github.com/yeeco/merkle_light.git?branch=yee-v1.0.4)",
+ "parity-codec 3.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sr-primitives 1.0.0",
+ "sr-std 1.0.0",
 ]
 
 [[package]]

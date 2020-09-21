@@ -68,10 +68,11 @@ use crate::in_mem;
 use crate::light::{call_executor::prove_execution, fetcher::ChangesProof};
 use crate::notifications::{StorageEventStream, StorageNotifications};
 use crate::runtime_api::{CallRuntimeAt, ConstructRuntimeApi};
-use merkle_light::{
-	merkle::{MerkleTree, MerkleTree32},
-	hash::DefaultAlgorithm,
-};
+// use merkle_light::{
+// 	merkle::{MerkleTree, MerkleTree32},
+// 	hash::DefaultAlgorithm,
+// };
+use yee_merkle::{MultiLayerProof, MultiLayerProof32};
 
 /// Type that implements `futures::Stream` of block import events.
 pub type ImportNotifications<Block> = mpsc::UnboundedReceiver<BlockImportNotification<Block>>;
@@ -908,9 +909,9 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 								Some(v) => {
 									let v: Vec<u8> = v;
 									let data = v.clone();
-									match MerkleTree32::<H256, DefaultAlgorithm<H256>>::from_bytes(v.as_slice()) {
+									match MultiLayerProof32::from_bytes(v.as_slice()) {
 										Ok(v) => {
-											let mt = v.to_MerkleTree();
+											let mt = v.to_MultiLayerProof();
 											Some(mt.into_bytes())
 										}
 										Err(_) => { Some(data) }
