@@ -68,6 +68,7 @@ use crate::in_mem;
 use crate::light::{call_executor::prove_execution, fetcher::ChangesProof};
 use crate::notifications::{StorageEventStream, StorageNotifications};
 use crate::runtime_api::{CallRuntimeAt, ConstructRuntimeApi};
+use merkle_light::merkle::{MerkleTree, MerkleTree32};
 
 /// Type that implements `futures::Stream` of block import events.
 pub type ImportNotifications<Block> = mpsc::UnboundedReceiver<BlockImportNotification<Block>>;
@@ -900,7 +901,19 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 						debug!("NativeOrEncoded::Encoded: ");
 						if v.len() > 0 {
 							let mut v = v.as_slice();
-							proof = Decode::decode(&mut v);
+							proof = match Decode::decode(&mut v){
+								Some(v) => {
+									let data = v.clone();
+									match MerkleTree32::from_bytes(v.as_slice()) {
+										Ok(v) => {
+											let mt = v.to_MerkleTree();
+											Some(mt.into_bytes())
+										}
+										Err(_) => { Some(data) }
+									}
+								}
+								None => { None }
+							};
 						}
 					}
 				}
