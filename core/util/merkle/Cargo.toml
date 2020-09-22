@@ -10,7 +10,7 @@ edition = "2018"
 rstd = { package = "sr-std", path = "../../sr-std", default-features = false }
 parity-codec = { version = "3.2", default-features = false }
 runtime_primitives = { package = "sr-primitives", path = "../../sr-primitives", default-features = false }
-merkle-light = { package = "merkle_light", git = "https://github.com/yeeco/merkle_light.git", branch = "yee-v1.0.4", default-features = false }
+merkle-light = { package = "merkle_light", git = "https://github.com/yeeco/merkle_light.git", branch = "yee", default-features = false }
 log = { version = "0.4", optional = true }
 
 [features]

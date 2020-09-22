@@ -1805,7 +1805,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "merkle_light"
 version = "0.3.1"
-source = "git+https://github.com/yeeco/merkle_light.git?branch=yee-v1.0.4#7d4ecaa4e63eb0a4b95674186276e55353e4d7fc"
+source = "git+https://github.com/yeeco/merkle_light.git?branch=yee#5baa7b0f6ffbc8af58de2a06ad661ca064d13ee4"
 dependencies = [
  "parity-codec 3.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -5276,7 +5276,7 @@ name = "yee-merkle"
 version = "0.4.0"
 dependencies = [
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "merkle_light 0.3.1 (git+https://github.com/yeeco/merkle_light.git?branch=yee-v1.0.4)",
+ "merkle_light 0.3.1 (git+https://github.com/yeeco/merkle_light.git?branch=yee)",
  "parity-codec 3.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "sr-primitives 1.0.0",
  "sr-std 1.0.0",
@@ -5474,7 +5474,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum memoffset 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "0f9dc261e2b62d7a622bf416ea3c5245cdd5d9a7fcc428c0d06804dfce1775b3"
 "checksum memory-db 0.12.2 (registry+https://github.com/rust-lang/crates.io-index)" = "7623b01a4f1b7acb7cf8e3f678f05e15e6ae26cb0b738dfeb5cc186fd6b82ef4"
 "checksum memory_units 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "71d96e3f3c0b6325d8ccd83c33b28acb183edcb6c67938ba104ec546854b0882"
-"checksum merkle_light 0.3.1 (git+https://github.com/yeeco/merkle_light.git?branch=yee-v1.0.4)" = "<none>"
+"checksum merkle_light 0.3.1 (git+https://github.com/yeeco/merkle_light.git?branch=yee)" = "<none>"
 "checksum merlin 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)" = "83c2dda19c01176e8e7148f7bdb88bbdf215a8db0641f89fc40e4b81736aeda5"
 "checksum mime 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)" = "ba626b8a6de5da682e1caa06bdb42a335aee5a84db8e5046a3e8ab17ba0a3ae0"
 "checksum mio 0.6.16 (registry+https://github.com/rust-lang/crates.io-index)" = "71646331f2619b1026cc302f87a2b8b648d5c6dd6937846a16cc8ce0f347f432"
