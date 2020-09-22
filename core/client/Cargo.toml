@@ -27,8 +27,7 @@ runtime-version = { package = "sr-version", path = "../sr-version", default-feat
 rstd = { package = "sr-std", path = "../sr-std", default-features = false }
 inherents = { package = "substrate-inherents", path = "../inherents", default-features = false }
 sr-api-macros = { path = "../sr-api-macros" }
-#merkle-light = { package = "merkle_light", git = "https://github.com/yeeco/merkle_light.git", branch = "yee-v1.0.4", default-features = false }
-yee-merkle = { path = "../util/merkle" }
+yee-merkle = { path = "../util/merkle", default-features = false }
 
 [dev-dependencies]
 test-client = { package = "substrate-test-client", path = "../test-client" }
@@ -58,5 +57,5 @@ std = [
 	"substrate-telemetry",
 	"hash-db",
 	"kvdb",
-#	"merkle-light/std"
+	"yee-merkle/std"
 ]
