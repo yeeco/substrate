@@ -583,8 +583,8 @@ pub enum CoreParams<CC, RP> {
 	/// Import blocks from file.
 	ImportBlocks(ImportBlocksCmd),
 
-	/// Revert chain to the previous state.
-	Revert(RevertCmd),
+	// /// Revert chain to the previous state.
+	// Revert(RevertCmd),
 
 	/// Remove the whole chain data.
 	PurgeChain(PurgeChainCmd),
@@ -614,10 +614,10 @@ impl<CC, RP> StructOpt for CoreParams<CC, RP> where
 			ImportBlocksCmd::augment_clap(SubCommand::with_name("import-blocks"))
 				.about("Import blocks from file.")
 		)
-		.subcommand(
-			RevertCmd::augment_clap(SubCommand::with_name("revert"))
-				.about("Revert chain to the previous state.")
-		)
+		// .subcommand(
+		// 	RevertCmd::augment_clap(SubCommand::with_name("revert"))
+		// 		.about("Revert chain to the previous state.")
+		// )
 		.subcommand(
 			PurgeChainCmd::augment_clap(SubCommand::with_name("purge-chain"))
 				.about("Remove the whole chain data.")
@@ -632,7 +632,7 @@ impl<CC, RP> StructOpt for CoreParams<CC, RP> where
 				CoreParams::ExportBlocks(ExportBlocksCmd::from_clap(matches)),
 			("import-blocks", Some(matches)) =>
 				CoreParams::ImportBlocks(ImportBlocksCmd::from_clap(matches)),
-			("revert", Some(matches)) => CoreParams::Revert(RevertCmd::from_clap(matches)),
+			// ("revert", Some(matches)) => CoreParams::Revert(RevertCmd::from_clap(matches)),
 			("purge-chain", Some(matches)) =>
 				CoreParams::PurgeChain(PurgeChainCmd::from_clap(matches)),
 			(_, None) => CoreParams::Run(MergeParameters::from_clap(matches)),
@@ -649,7 +649,7 @@ impl<CC, RP> GetLogFilter for CoreParams<CC, RP> where CC: GetLogFilter {
 			CoreParams::ExportBlocks(c) => c.get_log_filter(),
 			CoreParams::ImportBlocks(c) => c.get_log_filter(),
 			CoreParams::PurgeChain(c) => c.get_log_filter(),
-			CoreParams::Revert(c) => c.get_log_filter(),
+			// CoreParams::Revert(c) => c.get_log_filter(),
 			CoreParams::Custom(c) => c.get_log_filter(),
 		}
 	}
