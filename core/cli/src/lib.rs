@@ -253,8 +253,8 @@ where
 			import_blocks::<F, _, _>(params, spec_factory, exit, version).map(|_| None),
 		params::CoreParams::PurgeChain(params) =>
 			purge_chain::<F, _>(params, spec_factory, version).map(|_| None),
-		params::CoreParams::Revert(params) =>
-			revert_chain::<F, _>(params, spec_factory, version).map(|_| None),
+		// params::CoreParams::Revert(params) =>
+		// 	revert_chain::<F, _>(params, spec_factory, version).map(|_| None),
 		params::CoreParams::Custom(params) => Ok(Some((params, spec_factory, exit, version.to_owned()))),
 	}
 }
