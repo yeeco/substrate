@@ -154,9 +154,9 @@ pub trait Backend<Block, H>: AuxStore + Send + Sync where
 	fn destroy_state(&self, _state: Self::State) -> error::Result<()> {
 		Ok(())
 	}
-	/// Attempts to revert the chain by `n` blocks. Returns the number of blocks that were
+	/// Attempts to revert the chain to target number. Returns the height of blocks that were
 	/// successfully reverted.
-	fn revert(&self, n: NumberFor<Block>) -> error::Result<NumberFor<Block>>;
+	fn revert(&self, number: NumberFor<Block>) -> error::Result<NumberFor<Block>>;
 
 	/// Insert auxiliary data into key-value store.
 	fn insert_aux<

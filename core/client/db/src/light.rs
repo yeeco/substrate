@@ -61,7 +61,7 @@ const CHANGES_TRIE_CHT_PREFIX: u8 = 1;
 /// Light blockchain storage. Stores most recent headers + CHTs for older headers.
 /// Locks order: meta, leaves, cache.
 pub struct LightStorage<Block: BlockT> {
-	db: Arc<KeyValueDB>,
+	pub db: Arc<KeyValueDB>,
 	meta: RwLock<Meta<NumberFor<Block>, Block::Hash>>,
 	leaves: RwLock<LeafSet<Block::Hash, NumberFor<Block>>>,
 	cache: Arc<DbCacheSync<Block>>,
@@ -561,6 +561,11 @@ impl<Block> LightBlockchainStorage<Block> for LightStorage<Block>
 			.unwrap_or_default().and_then(|x|Decode::decode(&mut &x[..]));
 
 		genesis_state.map(Into::into)
+	}
+
+	fn revert(&self, number: <<Block as BlockT>::Header as HeaderT>::Number) -> ClientResult<<<Block as BlockT>::Header as HeaderT>::Number> {
+		// todo
+		Ok(As::sa(0))
 	}
 }
 

@@ -122,6 +122,30 @@ pub fn new_client<Factory: components::ServiceFactory>(config: &FactoryFullConfi
 	Ok(client)
 }
 
+/// Creates bare full-client without any networking.
+pub fn new_full_client<Factory: components::ServiceFactory>(config: &FactoryFullConfiguration<Factory>)
+															-> Result<Arc<ComponentClient<components::FullComponents<Factory>>>, error::Error>
+{
+	let executor = NativeExecutor::new(config.default_heap_pages);
+	let (client, _) = components::FullComponents::<Factory>::build_client(
+		config,
+		executor,
+	)?;
+	Ok(client)
+}
+
+/// Creates bare light-client without any networking.
+pub fn new_light_client<Factory: components::ServiceFactory>(config: &FactoryFullConfiguration<Factory>)
+															 -> Result<Arc<ComponentClient<components::LightComponents<Factory>>>, error::Error>
+{
+	let executor = NativeExecutor::new(config.default_heap_pages);
+	let (client, _) = components::LightComponents::<Factory>::build_client(
+		config,
+		executor,
+	)?;
+	Ok(client)
+}
+
 impl<Components: components::Components> Service<Components> {
 	/// Creates a new service.
 	pub fn new(

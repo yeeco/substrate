@@ -1169,13 +1169,15 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 		Some(&self.changes_tries_storage)
 	}
 
-	fn revert(&self, n: NumberFor<Block>) -> Result<NumberFor<Block>, client::error::Error> {
+	fn revert(&self, number: NumberFor<Block>) -> Result<NumberFor<Block>, client::error::Error> {
 		use client::blockchain::HeaderBackend;
 
 		let mut best = self.blockchain.info()?.best_number;
 		let finalized = self.blockchain.info()?.finalized_number;
-		let revertible = best - finalized;
-		let n = if revertible < n { revertible } else { n };
+		if number > best {
+			return Ok(As::sa(0))
+		}
+		let n = if number > finalized { best - number } else { As::sa(0) };
 
 		for c in 0 .. n.as_() {
 			if best == As::sa(0) {
@@ -1204,6 +1206,37 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 				None => return Ok(As::sa(c))
 			}
 		}
+		if number < finalized {
+			let mut num = finalized;
+			while  number < num {
+				let mut transaction = DBTransaction::new();
+				// remove dropped info from db
+				let dropped_hash = self.blockchain.hash(num)?.ok_or_else(
+					|| client::error::ErrorKind::UnknownBlock(
+						format!("Error reverting to {}. Block hash not found.", num)))?;
+				let key = utils::number_and_hash_to_lookup_key(num.clone(), &dropped_hash);
+				transaction.delete(columns::KEY_LOOKUP, &key);
+				transaction.delete(columns::HEADER, &key);
+				transaction.delete(columns::BODY, &key);
+				transaction.delete(columns::JUSTIFICATION, &key);
+				transaction.delete(columns::PROOF, &key);
+				children::remove_children(&mut transaction, columns::META, meta_keys::CHILDREN_PREFIX, dropped_hash);
+
+				// set new state to db
+				let cur_num = num - As::sa(1);
+				let current_hash = self.blockchain.hash(cur_num)?.ok_or_else(
+					|| client::error::ErrorKind::UnknownBlock(
+						format!("Error reverting to {}. Block hash not found.", cur_num)))?;
+				let key = utils::number_and_hash_to_lookup_key(cur_num.clone(), &current_hash);
+				transaction.put(columns::META, meta_keys::BEST_BLOCK, &key);
+				transaction.put(columns::META, meta_keys::FINALIZED_BLOCK, &key);
+				self.storage.db.write(transaction).map_err(db_err)?;
+				self.blockchain.update_meta(current_hash, cur_num, true, true);
+
+				num -= cur_num;
+			}
+		}
+
 		Ok(n)
 	}
 
