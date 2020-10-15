@@ -1177,35 +1177,36 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 		if number > best {
 			return Ok(As::sa(0))
 		}
-		let n = if number > finalized { best - number } else { As::sa(0) };
-
-		for c in 0 .. n.as_() {
-			if best == As::sa(0) {
-				return Ok(As::sa(c))
-			}
-			let mut transaction = DBTransaction::new();
-			match self.storage.state_db.revert_one() {
-				Some(commit) => {
-					apply_state_commit(&mut transaction, commit);
-					let removed = self.blockchain.header(BlockId::Number(best))?.ok_or_else(
-						|| client::error::ErrorKind::UnknownBlock(
-							format!("Error reverting to {}. Block hash not found.", best)))?;
-
-					best -= As::sa(1);  // prev block
-					let hash = self.blockchain.hash(best)?.ok_or_else(
-						|| client::error::ErrorKind::UnknownBlock(
-							format!("Error reverting to {}. Block hash not found.", best)))?;
-					let key = utils::number_and_hash_to_lookup_key(best.clone(), &hash);
-					transaction.put(columns::META, meta_keys::BEST_BLOCK, &key);
-					transaction.delete(columns::KEY_LOOKUP, removed.hash().as_ref());
-					children::remove_children(&mut transaction, columns::META, meta_keys::CHILDREN_PREFIX, hash);
-					self.storage.db.write(transaction).map_err(db_err)?;
-					self.blockchain.update_meta(hash, best, true, false);
-					self.blockchain.leaves.write().revert(removed.hash().clone(), removed.number().clone(), removed.parent_hash().clone());
+		if number > finalized {
+			while  best > finalized {
+				if number == best {
+					break;
 				}
-				None => return Ok(As::sa(c))
+				let mut transaction = DBTransaction::new();
+				match self.storage.state_db.revert_one() {
+					Some(commit) => {
+						apply_state_commit(&mut transaction, commit);
+						let removed = self.blockchain.header(BlockId::Number(best))?.ok_or_else(
+							|| client::error::ErrorKind::UnknownBlock(
+								format!("Error reverting to {}. Block hash not found.", best)))?;
+
+						best -= As::sa(1);  // prev block
+						let hash = self.blockchain.hash(best)?.ok_or_else(
+							|| client::error::ErrorKind::UnknownBlock(
+								format!("Error reverting to {}. Block hash not found.", best)))?;
+						let key = utils::number_and_hash_to_lookup_key(best.clone(), &hash);
+						transaction.put(columns::META, meta_keys::BEST_BLOCK, &key);
+						transaction.delete(columns::KEY_LOOKUP, removed.hash().as_ref());
+						children::remove_children(&mut transaction, columns::META, meta_keys::CHILDREN_PREFIX, hash);
+						self.storage.db.write(transaction).map_err(db_err)?;
+						self.blockchain.update_meta(hash, best, true, false);
+						self.blockchain.leaves.write().revert(removed.hash().clone(), removed.number().clone(), removed.parent_hash().clone());
+					}
+					None => return Ok(best)
+				}
 			}
 		}
+
 		if number < finalized {
 			let mut num = finalized;
 			while  number < num {
@@ -1220,6 +1221,11 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 				transaction.delete(columns::BODY, &key);
 				transaction.delete(columns::JUSTIFICATION, &key);
 				transaction.delete(columns::PROOF, &key);
+				utils::remove_number_to_key_mapping(
+					&mut transaction,
+					columns::KEY_LOOKUP,
+					num
+				);
 				children::remove_children(&mut transaction, columns::META, meta_keys::CHILDREN_PREFIX, dropped_hash);
 
 				// set new state to db
@@ -1235,9 +1241,10 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 
 				num -= cur_num;
 			}
+			best = num;
 		}
 
-		Ok(n)
+		Ok(best)
 	}
 
 	fn blockchain(&self) -> &BlockchainDb<Block> {

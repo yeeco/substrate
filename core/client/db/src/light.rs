@@ -16,31 +16,33 @@
 
 //! RocksDB-based light client blockchain storage.
 
-use std::{sync::Arc, collections::HashMap};
-use parking_lot::RwLock;
+use std::{collections::HashMap, sync::Arc};
 
-use kvdb::{KeyValueDB, DBTransaction};
+use kvdb::{DBTransaction, KeyValueDB};
+use log::{debug, trace, warn};
+use parity_codec::{Decode, Encode};
+use parity_codec::alloc::collections::BTreeMap;
+use parking_lot::RwLock;
 
 use client::backend::{AuxStore, NewBlockState};
 use client::blockchain::{BlockStatus, Cache as BlockchainCache,
-	HeaderBackend as BlockchainHeaderBackend, Info as BlockchainInfo};
+						 HeaderBackend as BlockchainHeaderBackend, Info as BlockchainInfo};
+use client::children;
 use client::cht;
-use client::leaves::{LeafSet, FinalizationDisplaced};
 use client::error::{ErrorKind as ClientErrorKind, Result as ClientResult};
+use client::leaves::{FinalizationDisplaced, LeafSet};
 use client::light::blockchain::Storage as LightBlockchainStorage;
-use parity_codec::{Decode, Encode};
+use consensus_common::well_known_cache_keys;
 use primitives::Blake2Hasher;
 use runtime_primitives::{generic::BlockId, Proof};
-use runtime_primitives::traits::{Block as BlockT, Header as HeaderT,
-	Zero, One, As, NumberFor, Digest, DigestItem};
-use consensus_common::well_known_cache_keys;
-use crate::cache::{DbCacheSync, DbCache, ComplexBlockId};
-use crate::utils::{self, meta_keys, Meta, db_err, open_database,
-	read_db, block_id_to_lookup_key, read_meta};
-use crate::DatabaseSettings;
-use log::{trace, warn, debug};
+use runtime_primitives::traits::{As, Block as BlockT,
+								 Digest, DigestItem, Header as HeaderT, NumberFor, One, Zero};
 use state_machine::backend::InMemory;
-use parity_codec::alloc::collections::BTreeMap;
+
+use crate::cache::{ComplexBlockId, DbCache, DbCacheSync};
+use crate::DatabaseSettings;
+use crate::utils::{self, block_id_to_lookup_key, db_err, Meta, meta_keys,
+				   open_database, read_db, read_meta};
 
 pub(crate) mod columns {
 	pub const META: Option<u32> = crate::utils::COLUMN_META;
@@ -61,7 +63,7 @@ const CHANGES_TRIE_CHT_PREFIX: u8 = 1;
 /// Light blockchain storage. Stores most recent headers + CHTs for older headers.
 /// Locks order: meta, leaves, cache.
 pub struct LightStorage<Block: BlockT> {
-	pub db: Arc<KeyValueDB>,
+	db: Arc<KeyValueDB>,
 	meta: RwLock<Meta<NumberFor<Block>, Block::Hash>>,
 	leaves: RwLock<LeafSet<Block::Hash, NumberFor<Block>>>,
 	cache: Arc<DbCacheSync<Block>>,
@@ -539,15 +541,14 @@ impl<Block> LightBlockchainStorage<Block> for LightStorage<Block>
 	}
 
 	fn proof(&self, id: &BlockId<Block>) -> Option<Proof> {
-		match read_db(&*self.db, columns::KEY_LOOKUP, columns::PROOF, *id){
+		match read_db(&*self.db, columns::KEY_LOOKUP, columns::PROOF, *id) {
 			Ok(Some(proof)) => Decode::decode(&mut &proof[..]),
 			_ => None
 		}
 	}
 
-	fn update_genesis_state<H>(&self, genesis_state: &InMemory<H>){
-
-		let genesis_state : GenesisState = genesis_state.to_owned().into();
+	fn update_genesis_state<H>(&self, genesis_state: &InMemory<H>) {
+		let genesis_state: GenesisState = genesis_state.to_owned().into();
 		let value = genesis_state.encode();
 		let mut transaction = DBTransaction::new();
 		transaction.put_vec(columns::GENESIS_STATE, &[], value);
@@ -555,17 +556,88 @@ impl<Block> LightBlockchainStorage<Block> for LightStorage<Block>
 		self.db.write(transaction);
 	}
 
-	fn genesis_state<H>(&self) -> Option<InMemory<H>>{
-
-		let genesis_state : Option<GenesisState> = self.db.get(columns::GENESIS_STATE, &[])
-			.unwrap_or_default().and_then(|x|Decode::decode(&mut &x[..]));
+	fn genesis_state<H>(&self) -> Option<InMemory<H>> {
+		let genesis_state: Option<GenesisState> = self.db.get(columns::GENESIS_STATE, &[])
+			.unwrap_or_default().and_then(|x| Decode::decode(&mut &x[..]));
 
 		genesis_state.map(Into::into)
 	}
 
 	fn revert(&self, number: <<Block as BlockT>::Header as HeaderT>::Number) -> ClientResult<<<Block as BlockT>::Header as HeaderT>::Number> {
-		// todo
-		Ok(As::sa(0))
+		let header = |number: <<Block as BlockT>::Header as HeaderT>::Number| -> Result<Option<Block::Header>, client::error::Error> {
+			utils::read_header::<Block>(&*self.db, columns::KEY_LOOKUP, columns::HEADER, BlockId::Number(number))
+		};
+		let meta = self.meta.read();
+		let mut best = meta.best_number;
+		let finalized = meta.finalized_number;
+		if number > best {
+			return Ok(As::sa(0))
+		}
+
+		while best > finalized {
+			if number == best {
+				break;
+			}
+			let mut transaction = DBTransaction::new();
+			utils::remove_number_to_key_mapping(
+				&mut transaction,
+				columns::KEY_LOOKUP,
+				best,
+			);
+			let removed = header(best)?.ok_or_else(
+				|| client::error::ErrorKind::UnknownBlock(
+					format!("Error reverting to {}. Block hash not found.", best)))?;
+
+			transaction.delete(columns::KEY_LOOKUP, removed.hash().as_ref());
+			let key = utils::number_and_hash_to_lookup_key(best.clone(), &removed.hash());
+			transaction.delete(columns::HEADER, &key);
+			transaction.delete(columns::PROOF, &key);
+
+
+			best -= As::sa(1);  // prev block
+			let hash = header(best)?.ok_or_else(
+				|| client::error::ErrorKind::UnknownBlock(
+					format!("Error reverting to {}. Block hash not found.", best)))?.hash();
+			let key = utils::number_and_hash_to_lookup_key(best.clone(), &hash);
+			transaction.put(columns::META, meta_keys::BEST_BLOCK, &key);
+			self.update_meta(hash, best, true, false);
+			self.db.write(transaction).map_err(db_err)?;
+			self.leaves.write().revert(removed.hash().clone(), removed.number().clone(), removed.parent_hash().clone());
+		}
+
+		if number < finalized {
+			let mut best = finalized;
+			while number < best {
+				let mut transaction = DBTransaction::new();
+				// remove dropped info from db
+				let dropped_hash = header(best)?.ok_or_else(
+					|| client::error::ErrorKind::UnknownBlock(
+						format!("Error reverting to {}. Block hash not found.", best)))?.hash();
+				let key = utils::number_and_hash_to_lookup_key(best.clone(), &dropped_hash);
+				transaction.delete(columns::KEY_LOOKUP, &key);
+				transaction.delete(columns::HEADER, &key);
+				transaction.delete(columns::PROOF, &key);
+				utils::remove_number_to_key_mapping(
+					&mut transaction,
+					columns::KEY_LOOKUP,
+					best,
+				);
+				children::remove_children(&mut transaction, columns::META, meta_keys::CHILDREN_PREFIX, dropped_hash);
+
+				// set new state to db
+				best -= As::sa(1);
+				let hash = header(best)?.ok_or_else(
+					|| client::error::ErrorKind::UnknownBlock(
+						format!("Error reverting to {}. Block hash not found.", best)))?.hash();
+				let key = utils::number_and_hash_to_lookup_key(best.clone(), &hash);
+				transaction.put(columns::META, meta_keys::BEST_BLOCK, &key);
+				transaction.put(columns::META, meta_keys::FINALIZED_BLOCK, &key);
+				self.db.write(transaction).map_err(db_err)?;
+				self.update_meta(hash, best, true, true);
+			}
+		}
+
+		Ok(best)
 	}
 }
 
