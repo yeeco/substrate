@@ -567,9 +567,10 @@ impl<Block> LightBlockchainStorage<Block> for LightStorage<Block>
 		let header = |number: <<Block as BlockT>::Header as HeaderT>::Number| -> Result<Option<Block::Header>, client::error::Error> {
 			utils::read_header::<Block>(&*self.db, columns::KEY_LOOKUP, columns::HEADER, BlockId::Number(number))
 		};
-		let meta = self.meta.read();
-		let mut best = meta.best_number;
-		let finalized = meta.finalized_number;
+		let (mut best, finalized) = {
+			let meta = self.meta.read();
+			(meta.best_number, meta.finalized_number)
+		};
 		if number > best {
 			return Ok(As::sa(0))
 		}
@@ -652,8 +653,9 @@ fn cht_key<N: As<u64>>(cht_type: u8, block: N) -> [u8; 5] {
 pub(crate) mod tests {
 	use client::cht;
 	use runtime_primitives::generic::DigestItem;
-	use runtime_primitives::testing::{H256 as Hash, Header, Block as RawBlock, ExtrinsicWrapper};
+	use runtime_primitives::testing::{Block as RawBlock, ExtrinsicWrapper, H256 as Hash, Header};
 	use runtime_primitives::traits::AuthorityIdFor;
+
 	use super::*;
 
 	type Block = RawBlock<ExtrinsicWrapper<u32>>;
