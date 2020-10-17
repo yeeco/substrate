@@ -379,11 +379,6 @@ pub struct RunCmd {
 	/// Enable authoring even when offline.
 	#[structopt(long = "force-authoring")]
 	pub force_authoring: bool,
-
-	/// Max leading blocks.
-	#[structopt(long = "max-leading-blocks", default_value = "2880")]
-	pub max_leading_blocks: u64,
-
 }
 
 /// Stores all required Cli values for a keyring test account.

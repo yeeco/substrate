@@ -430,7 +430,6 @@ pub struct ChainSync<B: BlockT> {
     is_stopping: AtomicBool,
     is_offline: Arc<AtomicBool>,
     is_major_syncing: Arc<AtomicBool>,
-    max_leading_blocks: u64,
 }
 
 /// Reported sync state.
@@ -497,7 +496,6 @@ impl<B: BlockT> ChainSync<B> {
             is_stopping: Default::default(),
             is_offline,
             is_major_syncing,
-            max_leading_blocks: config.max_leading_blocks,
         }
     }
 
@@ -1115,10 +1113,6 @@ impl<B: BlockT> ChainSync<B> {
 
     // Issue a request for a peer to download new blocks, if any are available
     fn download_new(&mut self, protocol: &mut Context<B>, who: PeerId) {
-        let (should_download, leading_number, max_to_download, best_number, _finalized_number) = self.should_download(protocol);
-        if !should_download {
-            return;
-        }
         if let Some(ref mut peer) = self.peers.get_mut(&who) {
             // when there are too many blocks in the queue => do not try to download new blocks
             if self.queue_blocks.len() > MAX_IMPORTING_BLOCKS {
@@ -1128,11 +1122,8 @@ impl<B: BlockT> ChainSync<B> {
             match peer.state {
                 PeerSyncState::Available => {
                     trace!(target: "sync", "Considering new block download from {}, common block is {}, best is {:?}", who, peer.common_number, peer.best_number);
-
-                    let count = ::std::cmp::min( max_to_download as usize, MAX_BLOCKS_TO_REQUEST);
-                    if let Some(range) = self.blocks.needed_blocks(who.clone(), count, peer.best_number, peer.common_number) {
+                    if let Some(range) = self.blocks.needed_blocks(who.clone(), MAX_BLOCKS_TO_REQUEST, peer.best_number, peer.common_number) {
                         trace!(target: "sync", "Requesting blocks from {}, ({} to {})", who, range.start, range.end);
-
                         let request = message::generic::BlockRequest {
                             id: 0,
                             fields: self.required_block_attributes.clone(),
@@ -1150,27 +1141,6 @@ impl<B: BlockT> ChainSync<B> {
                 _ => trace!(target: "sync", "Peer {} is busy", who),
             }
         }
-    }
-
-    fn should_download(&self, protocol: &Context<B>) -> (bool, u64, u64, NumberFor<B>, NumberFor<B>) {
-
-        let info = protocol.client().info().expect("should always get client info");
-        let best_number = info.chain.best_number;
-        let finalized_number = info.chain.finalized_number;
-
-        // check leading number
-		let leading_number = if best_number >= finalized_number {
-            best_number - finalized_number
-        } else {
-            Zero::zero()
-        };
-        let should_download = leading_number < As::sa(self.max_leading_blocks);
-
-        let leading_number = <NumberFor<B> as As<u64>>::as_(leading_number);
-        let max_to_download = if self.max_leading_blocks >= leading_number { self.max_leading_blocks - leading_number } else { 0 };
-        debug!(target: "sync", "Check before download: best_queued_number: {}, finalized_number: {},\
-         leading_number: {}, should_download: {}, max_to_download: {}", best_number, finalized_number, leading_number, should_download, max_to_download);
-        (should_download, leading_number, max_to_download, best_number, finalized_number)
     }
 
     fn request_ancestry(protocol: &mut Context<B>, who: PeerId, block: NumberFor<B>) {
