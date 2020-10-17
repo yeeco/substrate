@@ -395,6 +395,7 @@ impl<B: BlockT> BlockImporter<B> {
 					}
 				},
 				Err(BlockImportError::Hold) => {
+					link.hold();
 				},
 				Err(BlockImportError::UnknownParent) | Err(BlockImportError::Error) => {
 					link.restart();
@@ -538,6 +539,8 @@ pub trait Link<B: BlockT>: Send {
 	fn note_useless_and_restart_sync(&self, _who: Origin, _reason: &str) {}
 	/// Restart sync.
 	fn restart(&self) {}
+	/// Hold sync.
+	fn hold(&self) {}
 	/// Synchronization request has been processed.
 	#[cfg(any(test, feature = "test-helpers"))]
 	fn synchronized(&self) {}

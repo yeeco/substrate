@@ -267,6 +267,8 @@ pub enum ProtocolMsg<B: BlockT, S: NetworkSpecialization<B>> {
 	Stop,
 	/// Tell protocol to perform regular maintenance.
 	Tick,
+	/// Hold sync
+	HoldSync,
 	/// Synchronization request.
 	#[cfg(any(test, feature = "test-helpers"))]
 	Synchronize,
@@ -438,6 +440,11 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 				self.stop();
 				return false;
 			},
+			ProtocolMsg::HoldSync => {
+				let mut context =
+					ProtocolContext::new(&mut self.context_data, &self.network_chan);
+				self.sync.hold(&mut context);
+			}
 			#[cfg(any(test, feature = "test-helpers"))]
 			ProtocolMsg::Synchronize => self.network_chan.send(NetworkMsg::Synchronized),
 		}

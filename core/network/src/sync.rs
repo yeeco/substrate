@@ -1063,6 +1063,40 @@ impl<B: BlockT> ChainSync<B> {
         }
     }
 
+    /// Hold the sync process.
+    pub(crate) fn hold(&mut self, protocol: &mut Context<B>) {
+        self.queue_blocks.clear();
+        self.best_importing_number = Zero::zero();
+        self.blocks.clear();
+        match protocol.client().info() {
+            Ok(info) => {
+                self.best_queued_hash = info.best_queued_hash.unwrap_or(info.chain.best_hash);
+                self.best_queued_number = info.best_queued_number.unwrap_or(info.chain.best_number);
+                debug!(target: "sync", "Hold with {} ({})", self.best_queued_number, self.best_queued_hash);
+            },
+            Err(e) => {
+                debug!(target: "sync", "Error reading blockchain: {:?}", e);
+                self.best_queued_hash = self.genesis_hash;
+                self.best_queued_number = As::sa(0);
+            }
+        }
+
+        let mut ids = vec![];
+        self.peers.retain(|k, v| {
+            match v.state {
+                PeerSyncState::DownloadingJustification(_) => true,
+                _ => {
+                    ids.push(k.clone());
+                    false
+                },
+            }
+        });
+
+        for id in ids {
+            self.new_peer(protocol, id);
+        }
+    }
+
     /// Clear all sync data.
     pub(crate) fn clear(&mut self) {
         self.blocks.clear();

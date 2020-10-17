@@ -127,6 +127,10 @@ impl<B: BlockT, S: NetworkSpecialization<B>> Link<B> for NetworkLink<B, S> {
 	fn restart(&self) {
 		let _ = self.protocol_sender.send(ProtocolMsg::RestartSync);
 	}
+
+	fn hold(&self) {
+		let _ = self.protocol_sender.send(ProtocolMsg::HoldSync);
+	}
 }
 
 /// Substrate network service. Handles network IO and manages connectivity.
