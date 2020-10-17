@@ -1129,11 +1129,6 @@ impl<B: BlockT> ChainSync<B> {
                 PeerSyncState::Available => {
                     trace!(target: "sync", "Considering new block download from {}, common block is {}, best is {:?}", who, peer.common_number, peer.best_number);
 
-                    if peer.common_number >= best_number && (peer.best_number > best_number + As::sa(self.max_leading_blocks)) && leading_number > 0 {
-                        debug!(target: "sync", "Too much behind, pause best block syncing.");
-                        return;
-                    }
-
                     let count = ::std::cmp::min( max_to_download as usize, MAX_BLOCKS_TO_REQUEST);
                     if let Some(range) = self.blocks.needed_blocks(who.clone(), count, peer.best_number, peer.common_number) {
                         trace!(target: "sync", "Requesting blocks from {}, ({} to {})", who, range.start, range.end);
