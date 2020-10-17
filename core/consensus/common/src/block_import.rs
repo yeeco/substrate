@@ -33,6 +33,8 @@ pub enum ImportResult {
 	KnownBad,
 	/// Block parent is not in the chain.
 	UnknownParent,
+	/// Hold
+	Hold,
 }
 
 /// Auxiliary data associated with an imported block result.

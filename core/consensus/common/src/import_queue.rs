@@ -394,6 +394,8 @@ impl<B: BlockT> BlockImporter<B> {
 						link.note_useless_and_restart_sync(peer, "Sent us a bad block");
 					}
 				},
+				Err(BlockImportError::Hold) => {
+				},
 				Err(BlockImportError::UnknownParent) | Err(BlockImportError::Error) => {
 					link.restart();
 				},
@@ -561,6 +563,8 @@ pub enum BlockImportError {
 	BadBlock(Option<Origin>),
 	/// Block has an unknown parent
 	UnknownParent,
+	/// Hold
+	Hold,
 	/// Other Error.
 	Error,
 }
@@ -604,6 +608,10 @@ pub fn import_single_block<B: BlockT, V: Verifier<B>>(
 			Ok(ImportResult::KnownBad) => {
 				debug!(target: "sync", "Peer gave us a bad block {}: {:?}", number, hash);
 				Err(BlockImportError::BadBlock(peer.clone()))
+			},
+			Ok(ImportResult::Hold) => {
+				debug!(target: "sync", "Hold importing block {}: {:?}", number, hash);
+				Err(BlockImportError::Hold)
 			},
 			Err(e) => {
 				debug!(target: "sync", "Error importing block {}: {:?}: {:?}", number, hash, e);
