@@ -52,6 +52,8 @@ const MAX_UNKNOWN_FORK_DOWNLOAD_LEN: u32 = 32;
 const MAX_JUSTIFICATION_TO_REQUEST: u32 = 128;
 // Justification request timeout
 const JUSTIFICATION_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+// Hold wait
+const HOLD_WAIT: Duration = Duration::from_secs(60);
 
 #[derive(Debug)]
 struct PeerSync<B: BlockT> {
@@ -430,6 +432,7 @@ pub struct ChainSync<B: BlockT> {
     is_stopping: AtomicBool,
     is_offline: Arc<AtomicBool>,
     is_major_syncing: Arc<AtomicBool>,
+    hold: Option<Instant>,
 }
 
 /// Reported sync state.
@@ -496,6 +499,7 @@ impl<B: BlockT> ChainSync<B> {
             is_stopping: Default::default(),
             is_offline,
             is_major_syncing,
+            hold: Default::default(),
         }
     }
 
@@ -1095,6 +1099,8 @@ impl<B: BlockT> ChainSync<B> {
         for id in ids {
             self.new_peer(protocol, id);
         }
+
+        self.hold = Some(Instant::now());
     }
 
     /// Clear all sync data.
@@ -1147,6 +1153,15 @@ impl<B: BlockT> ChainSync<B> {
 
     // Issue a request for a peer to download new blocks, if any are available
     fn download_new(&mut self, protocol: &mut Context<B>, who: PeerId) {
+
+        if let Some(instant) = self.hold {
+            if instant.elapsed()  < HOLD_WAIT {
+                return;
+            } else {
+                self.hold = None;
+            }
+        }
+
         if let Some(ref mut peer) = self.peers.get_mut(&who) {
             // when there are too many blocks in the queue => do not try to download new blocks
             if self.queue_blocks.len() > MAX_IMPORTING_BLOCKS {
