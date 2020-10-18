@@ -100,7 +100,7 @@ impl<B: BlockT, S: NetworkSpecialization<B>> Link<B> for NetworkLink<B, S> {
 		let _ = self.protocol_sender.send(ProtocolMsg::JustificationImportResult(hash.clone(), number, success));
 		if !success {
 			let reason = Severity::Bad(format!("Invalid justification provided for #{}", hash).to_string());
-			let _ = self.network_sender.send(NetworkMsg::ReportPeer(who, reason));
+			// let _ = self.network_sender.send(NetworkMsg::ReportPeer(who, reason));
 		}
 	}
 
