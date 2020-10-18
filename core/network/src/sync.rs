@@ -894,8 +894,10 @@ impl<B: BlockT> ChainSync<B> {
         self.justifications.clear();
     }
 
-    pub fn justification_import_result(&mut self, hash: B::Hash, number: NumberFor<B>, success: bool) {
+    pub fn justification_import_result(&mut self, hash: B::Hash, number: NumberFor<B>, success: bool, protocol: &mut Context<B>) {
         self.justifications.justification_import_result(hash, number, success);
+
+        self.justifications.dispatch(&mut self.peers, protocol, &*self.import_queue);
     }
 
     pub fn stop(&self) {

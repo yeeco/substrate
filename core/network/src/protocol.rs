@@ -431,7 +431,11 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 					ProtocolContext::new(&mut self.context_data, &self.network_chan);
 				self.sync.request_justification(&hash, number, &mut context, force);
 			},
-			ProtocolMsg::JustificationImportResult(hash, number, success) => self.sync.justification_import_result(hash, number, success),
+			ProtocolMsg::JustificationImportResult(hash, number, success) => {
+				let mut context =
+					ProtocolContext::new(&mut self.context_data, &self.network_chan);
+				self.sync.justification_import_result(hash, number, success, &mut context);
+			},
 			ProtocolMsg::PropagateExtrinsics => self.propagate_extrinsics(),
 			ProtocolMsg::Tick => self.tick(),
 			#[cfg(any(test, feature = "test-helpers"))]
