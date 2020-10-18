@@ -1069,6 +1069,7 @@ impl<B: BlockT> ChainSync<B> {
 
     /// Hold the sync process.
     pub(crate) fn hold(&mut self, protocol: &mut Context<B>) {
+        self.hold = Some(Instant::now());
         self.queue_blocks.clear();
         self.best_importing_number = Zero::zero();
         self.blocks.clear();
@@ -1100,7 +1101,6 @@ impl<B: BlockT> ChainSync<B> {
             self.new_peer(protocol, id);
         }
 
-        self.hold = Some(Instant::now());
     }
 
     /// Clear all sync data.
