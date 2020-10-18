@@ -867,6 +867,12 @@ impl<B: BlockT> ChainSync<B> {
     /// Called periodically to perform any time-based actions.
     pub fn tick(&mut self, protocol: &mut Context<B>) {
         self.justifications.dispatch(&mut self.peers, protocol, &*self.import_queue);
+
+        if let Some(instant) = self.hold {
+            if instant.elapsed() > HOLD_WAIT {
+                self.hold(protocol, false);
+            }
+        }
     }
 
     /// Request a justification for the given block.
@@ -1069,6 +1075,7 @@ impl<B: BlockT> ChainSync<B> {
 
     /// Hold the sync process.
     pub(crate) fn hold(&mut self, protocol: &mut Context<B>, hold: bool) {
+        trace!(target: "sync", "Hold importing, current: {:?}, hold: {}", self.hold, hold);
         if hold {
             if let Some(instant) = self.hold {
                 return;
@@ -1162,9 +1169,8 @@ impl<B: BlockT> ChainSync<B> {
     fn download_new(&mut self, protocol: &mut Context<B>, who: PeerId) {
 
         if let Some(instant) = self.hold {
-            if instant.elapsed()  < HOLD_WAIT {
-                return;
-            }
+            trace!(target: "sync", "Hold importing, download new paused.");
+            return;
         }
 
         if let Some(ref mut peer) = self.peers.get_mut(&who) {
