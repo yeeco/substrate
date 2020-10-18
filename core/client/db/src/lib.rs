@@ -1208,14 +1208,14 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 		}
 
 		if number < finalized {
-			let mut num = finalized;
-			while  number < num {
+			best = finalized;
+			while  number < best {
 				let mut transaction = DBTransaction::new();
 				// remove dropped info from db
-				let dropped_hash = self.blockchain.hash(num)?.ok_or_else(
+				let dropped_hash = self.blockchain.hash(best)?.ok_or_else(
 					|| client::error::ErrorKind::UnknownBlock(
-						format!("Error reverting to {}. Block hash not found.", num)))?;
-				let key = utils::number_and_hash_to_lookup_key(num.clone(), &dropped_hash);
+						format!("Error reverting to {}. Block hash not found.", best)))?;
+				let key = utils::number_and_hash_to_lookup_key(best, &dropped_hash);
 				transaction.delete(columns::KEY_LOOKUP, &key);
 				transaction.delete(columns::HEADER, &key);
 				transaction.delete(columns::BODY, &key);
@@ -1224,24 +1224,21 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 				utils::remove_number_to_key_mapping(
 					&mut transaction,
 					columns::KEY_LOOKUP,
-					num
+					best
 				);
 				children::remove_children(&mut transaction, columns::META, meta_keys::CHILDREN_PREFIX, dropped_hash);
 
 				// set new state to db
-				let cur_num = num - As::sa(1);
-				let current_hash = self.blockchain.hash(cur_num)?.ok_or_else(
+				best -= As::sa(1);
+				let hash = self.blockchain.hash(best)?.ok_or_else(
 					|| client::error::ErrorKind::UnknownBlock(
-						format!("Error reverting to {}. Block hash not found.", cur_num)))?;
-				let key = utils::number_and_hash_to_lookup_key(cur_num.clone(), &current_hash);
+						format!("Error reverting to {}. Block hash not found.", best)))?;
+				let key = utils::number_and_hash_to_lookup_key(best.clone(), &hash);
 				transaction.put(columns::META, meta_keys::BEST_BLOCK, &key);
 				transaction.put(columns::META, meta_keys::FINALIZED_BLOCK, &key);
 				self.storage.db.write(transaction).map_err(db_err)?;
-				self.blockchain.update_meta(current_hash, cur_num, true, true);
-
-				num -= cur_num;
+				self.blockchain.update_meta(hash, best, true, true);
 			}
-			best = num;
 		}
 
 		Ok(best)

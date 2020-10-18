@@ -607,7 +607,7 @@ impl<Block> LightBlockchainStorage<Block> for LightStorage<Block>
 		}
 
 		if number < finalized {
-			let mut best = finalized;
+			best = finalized;
 			while number < best {
 				let mut transaction = DBTransaction::new();
 				// remove dropped info from db
