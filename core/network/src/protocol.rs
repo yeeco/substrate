@@ -443,7 +443,7 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 			ProtocolMsg::HoldSync => {
 				let mut context =
 					ProtocolContext::new(&mut self.context_data, &self.network_chan);
-				self.sync.hold(&mut context);
+				self.sync.hold(&mut context, true);
 			}
 			#[cfg(any(test, feature = "test-helpers"))]
 			ProtocolMsg::Synchronize => self.network_chan.send(NetworkMsg::Synchronized),

@@ -178,6 +178,7 @@ pub trait BlockImport<B: BlockT> {
 	fn check_block(
 		&self,
 		hash: B::Hash,
+		number: NumberFor<B>,
 		parent_hash: B::Hash,
 	) -> Result<ImportResult, Self::Error>;
 

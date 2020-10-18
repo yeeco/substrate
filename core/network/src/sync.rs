@@ -1068,8 +1068,15 @@ impl<B: BlockT> ChainSync<B> {
     }
 
     /// Hold the sync process.
-    pub(crate) fn hold(&mut self, protocol: &mut Context<B>) {
-        self.hold = Some(Instant::now());
+    pub(crate) fn hold(&mut self, protocol: &mut Context<B>, hold: bool) {
+        if hold {
+            if let Some(instant) = self.hold {
+                return;
+            }
+            self.hold = Some(Instant::now());
+        } else {
+            self.hold = None;
+        }
         self.queue_blocks.clear();
         self.best_importing_number = Zero::zero();
         self.blocks.clear();
@@ -1157,8 +1164,6 @@ impl<B: BlockT> ChainSync<B> {
         if let Some(instant) = self.hold {
             if instant.elapsed()  < HOLD_WAIT {
                 return;
-            } else {
-                self.hold = None;
             }
         }
 
