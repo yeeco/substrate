@@ -99,8 +99,8 @@ impl<B: BlockT, S: NetworkSpecialization<B>> Link<B> for NetworkLink<B, S> {
 	fn justification_imported(&self, who: PeerId, hash: &B::Hash, number: NumberFor<B>, success: bool) {
 		let _ = self.protocol_sender.send(ProtocolMsg::JustificationImportResult(hash.clone(), number, success));
 		if !success {
-			let reason = Severity::Bad(format!("Invalid justification provided for #{}", hash).to_string());
-			// let _ = self.network_sender.send(NetworkMsg::ReportPeer(who, reason));
+			let reason = Severity::Useless(format!("Invalid justification provided for #{}", hash).to_string());
+			let _ = self.network_sender.send(NetworkMsg::ReportPeer(who, reason));
 		}
 	}
 
