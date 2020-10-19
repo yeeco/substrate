@@ -90,7 +90,7 @@ pub trait NetworkProvider<F, EH> where
 		params: NetworkProviderParams<F, EH>,
 		protocol_id: network::ProtocolId,
 		import_queue: Box<dyn consensus_common::import_queue::ImportQueue<FactoryBlock<F>>>,
-	) -> Result<network::NetworkChan<FactoryBlock<F>>, network::Error>;
+	) -> Result<(Arc<network::Service<F::Block, F::NetworkProtocol, F::IdentifySpecialization>>, network::NetworkChan<FactoryBlock<F>>), network::Error>;
 }
 
 /// Substrate service.
@@ -457,7 +457,7 @@ impl<Components: components::Components> Service<Components> {
 		};
 
 		let has_bootnodes = !network_params.network_config.boot_nodes.is_empty();
-		let network_chan = network_provider.provide_network(
+		let (network, network_chan) = network_provider.provide_network(
 			network_id,
 			network_params,
 			protocol_id,
@@ -466,7 +466,7 @@ impl<Components: components::Components> Service<Components> {
 		on_demand.map(|on_demand| on_demand.set_network_sender(network_chan));
 
 		let inherents_pool = Arc::new(InherentsPool::default());
-		/*
+
 		let offchain_workers = None;
 
 		{
@@ -552,7 +552,6 @@ impl<Components: components::Components> Service<Components> {
 
 			task_executor.spawn(events);
 		}
-		*/
 
 		Ok(Service {
 			client,
