@@ -102,6 +102,7 @@ pub trait NetworkProvider<F, EH> where
 pub struct Service<Components: components::Components> {
 	client: Arc<ComponentClient<Components>>,
 	network: Option<Arc<components::NetworkService<Components::Factory>>>,
+	network2: Option<Arc<dyn Network<<Components::Factory as ServiceFactory>::Block>>>,
 	transaction_pool: Arc<TransactionPool<Components::TransactionPoolApi>>,
 	inherents_pool: Arc<InherentsPool<ComponentExtrinsic<Components>>>,
 	keystore: Keystore,
@@ -368,6 +369,7 @@ impl<Components: components::Components> Service<Components> {
 		Ok(Service {
 			client,
 			network: Some(network),
+			network2: None,
 			transaction_pool,
 			inherents_pool,
 			signal: Some(signal),
@@ -563,6 +565,7 @@ impl<Components: components::Components> Service<Components> {
 		Ok(Service {
 			client,
 			network: None,
+			network2: Some(network),
 			transaction_pool,
 			inherents_pool,
 			keystore,
