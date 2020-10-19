@@ -80,6 +80,11 @@ pub type NetworkProviderParams<F, EH> where
 	<F as ServiceFactory>::IdentifySpecialization,
 >;
 
+pub trait Network<B: BlockT>: Send + Sync{
+	fn on_block_imported(&self, hash: B::Hash, header: B::Header);
+	fn on_block_finalized(&self, hash: B::Hash, header: B::Header);
+}
+
 pub trait NetworkProvider<F, EH> where
 	F: ServiceFactory,
 	EH: network::service::ExHashT,
@@ -90,7 +95,7 @@ pub trait NetworkProvider<F, EH> where
 		params: NetworkProviderParams<F, EH>,
 		protocol_id: network::ProtocolId,
 		import_queue: Box<dyn consensus_common::import_queue::ImportQueue<FactoryBlock<F>>>,
-	) -> Result<(Arc<network::Service<F::Block, F::NetworkProtocol, F::IdentifySpecialization>>, network::NetworkChan<FactoryBlock<F>>), network::Error>;
+	) -> Result<(Arc<dyn Network<F::Block>>, network::NetworkChan<FactoryBlock<F>>), network::Error>;
 }
 
 /// Substrate service.
