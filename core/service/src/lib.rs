@@ -549,9 +549,7 @@ impl<Components: components::Components> Service<Components> {
 
 			let events = MostRecentNotification(client.finality_notification_stream().fuse())
 				.for_each(move |notification| {
-					println!("debug in finality_notification_stream: {}", *notification.header.number());
 					if let Some(network) = network.upgrade() {
-						println!("debug before on_block_finalized: {}", *notification.header.number());
 						network.on_block_finalized(notification.hash, notification.header);
 					}
 					Ok(())
