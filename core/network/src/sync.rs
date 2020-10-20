@@ -144,13 +144,6 @@ impl<B: BlockT> PendingJustifications<B> {
             self.pending_requests.push_back(request);
         }
 
-        println!("debug dispatch");
-        println!("peer_requests: {:?}", self.peer_requests);
-        println!("pending_requests: {:?}", self.pending_requests);
-        println!("peers: {:?}", peers);
-        println!("justifications: {:?}", self.justifications.roots().collect::<Vec<_>>());
-        println!("debug dispatch end");
-
         if self.pending_requests.is_empty() {
             return;
         }
@@ -261,6 +254,8 @@ impl<B: BlockT> PendingJustifications<B> {
         is_descendent_of: F,
         force: bool,
     ) where F: Fn(&B::Hash, &B::Hash) -> Result<bool, ClientError> {
+        trace!("queue_request: hash: {} number:{} justifications_finalized: {:?}", justification.0.clone(), justification.1.clone(), self.justifications.best_finalized_number);
+
         match self.justifications.import(justification.0.clone(), justification.1.clone(), (), &is_descendent_of) {
             Ok(true) => {
                 // this is a new root so we add it to the current `pending_requests`
