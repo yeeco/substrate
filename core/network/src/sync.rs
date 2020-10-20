@@ -144,6 +144,13 @@ impl<B: BlockT> PendingJustifications<B> {
             self.pending_requests.push_back(request);
         }
 
+        println!("debug dispatch");
+        println!("peer_requests: {:?}", self.peer_requests);
+        println!("pending_requests: {:?}", self.pending_requests);
+        println!("peers: {:?}", peers);
+        println!("justifications: {:?}", self.justifications.roots().collect::<Vec<_>>());
+        println!("debug dispatch end");
+
         if self.pending_requests.is_empty() {
             return;
         }
