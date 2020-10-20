@@ -254,7 +254,7 @@ impl<B: BlockT> PendingJustifications<B> {
         is_descendent_of: F,
         force: bool,
     ) where F: Fn(&B::Hash, &B::Hash) -> Result<bool, ClientError> {
-        trace!("queue_request: hash: {} number:{} justifications_finalized: {:?}", justification.0.clone(), justification.1.clone(), self.justifications.best_finalized_number);
+        trace!(target: "sync", "Queue justification request: hash: {} number:{} justifications_finalized: {:?}", justification.0.clone(), justification.1.clone(), self.justifications.best_finalized_number);
 
         match self.justifications.import(justification.0.clone(), justification.1.clone(), (), &is_descendent_of) {
             Ok(true) => {
