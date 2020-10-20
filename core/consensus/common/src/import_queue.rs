@@ -378,6 +378,11 @@ impl<B: BlockT> BlockImporter<B> {
 							link.useless_peer(peer, "Sent block with bad justification to import");
 						}
 					}
+
+					if aux.skip_justification_requests.len() > 0 {
+						trace!(target: "sync", "Block imported skip pending justification requests: {:?}", aux.skip_justification_requests);
+						link.skip_justification_requests(aux.skip_justification_requests);
+					}
 				},
 				Err(BlockImportError::IncompleteHeader(who)) => {
 					if let Some(peer) = who {
