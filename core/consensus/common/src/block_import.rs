@@ -24,9 +24,9 @@ use crate::well_known_cache_keys;
 
 /// Block import result.
 #[derive(Debug, PartialEq, Eq)]
-pub enum ImportResult {
+pub enum ImportResult<H, N> {
 	/// Block imported.
-	Imported(ImportedAux),
+	Imported(ImportedAux<H, N>),
 	/// Already in the blockchain.
 	AlreadyInChain,
 	/// Block or parent is known to be bad.
@@ -39,29 +39,32 @@ pub enum ImportResult {
 
 /// Auxiliary data associated with an imported block result.
 #[derive(Debug, PartialEq, Eq)]
-pub struct ImportedAux {
+pub struct ImportedAux<H, N> {
 	/// Clear all pending justification requests.
 	pub clear_justification_requests: bool,
 	/// Request a justification for the given block.
 	pub needs_justification: bool,
 	/// Received a bad justification.
 	pub bad_justification: bool,
+	/// Skip justification
+	pub skip_justification: Vec<(H, N)>
 }
 
-impl Default for ImportedAux {
-	fn default() -> ImportedAux {
+impl<H, N> Default for ImportedAux<H, N> {
+	fn default() -> ImportedAux<H, N> {
 		ImportedAux {
 			clear_justification_requests: false,
 			needs_justification: false,
 			bad_justification: false,
+			skip_justification: Default::default(),
 		}
 	}
 }
 
-impl ImportResult {
+impl<H, N> ImportResult<H, N> {
 	/// Returns default value for `ImportResult::Imported` with both
 	/// `clear_justification_requests` and `needs_justification` set to false.
-	pub fn imported() -> ImportResult {
+	pub fn imported() -> ImportResult<H, N> {
 		ImportResult::Imported(ImportedAux::default())
 	}
 }
@@ -180,7 +183,7 @@ pub trait BlockImport<B: BlockT> {
 		hash: B::Hash,
 		number: NumberFor<B>,
 		parent_hash: B::Hash,
-	) -> Result<ImportResult, Self::Error>;
+	) -> Result<ImportResult<B::Hash, NumberFor<B>>, Self::Error>;
 
 	/// Import a block.
 	///
@@ -189,7 +192,7 @@ pub trait BlockImport<B: BlockT> {
 		&self,
 		block: ImportBlock<B>,
 		cache: HashMap<well_known_cache_keys::Id, Vec<u8>>,
-	) -> Result<ImportResult, Self::Error>;
+	) -> Result<ImportResult<B::Hash, NumberFor<B>>, Self::Error>;
 }
 
 /// Justification import trait

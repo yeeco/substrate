@@ -681,7 +681,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 		operation: &mut ClientImportOperation<Block, Blake2Hasher, B>,
 		import_block: ImportBlock<Block>,
 		new_cache: HashMap<CacheKeyId, Vec<u8>>,
-	) -> error::Result<ImportResult> where
+	) -> error::Result<ImportResult<Block::Hash, NumberFor<Block>>> where
 		E: CallExecutor<Block, Blake2Hasher> + Send + Sync + Clone,
 	{
 		use runtime_primitives::traits::Digest;
@@ -758,7 +758,7 @@ impl<B, E, Block, RA> Client<B, E, Block, RA> where
 		finalized: bool,
 		aux: Vec<(Vec<u8>, Option<Vec<u8>>)>,
 		fork_choice: ForkChoiceStrategy,
-	) -> error::Result<ImportResult> where
+	) -> error::Result<ImportResult<Block::Hash, NumberFor<Block>>> where
 		E: CallExecutor<Block, Blake2Hasher> + Send + Sync + Clone,
 	{
 		let parent_hash = import_headers.post().parent_hash().clone();
@@ -1451,7 +1451,7 @@ impl<B, E, Block, RA> consensus::BlockImport<Block> for Client<B, E, Block, RA> 
 		&self,
 		import_block: ImportBlock<Block>,
 		new_cache: HashMap<CacheKeyId, Vec<u8>>,
-	) -> Result<ImportResult, Self::Error> {
+	) -> Result<ImportResult<Block::Hash, NumberFor<Block>>, Self::Error> {
 		self.lock_import_and_run(|operation| {
 			self.apply_block(operation, import_block, new_cache)
 		}).map_err(|e| ConsensusErrorKind::ClientImport(e.to_string()).into())
@@ -1463,7 +1463,7 @@ impl<B, E, Block, RA> consensus::BlockImport<Block> for Client<B, E, Block, RA> 
 		hash: Block::Hash,
 		number: NumberFor<Block>,
 		parent_hash: Block::Hash,
-	) -> Result<ImportResult, Self::Error> {
+	) -> Result<ImportResult<Block::Hash, NumberFor<Block>>, Self::Error> {
 		match self.block_status(&BlockId::Hash(parent_hash))
 			.map_err(|e| ConsensusError::from(ConsensusErrorKind::ClientImport(e.to_string())))?
 		{

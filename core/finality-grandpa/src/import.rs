@@ -389,7 +389,7 @@ impl<B, E, Block: BlockT<Hash=H256>, RA, PRA> BlockImport<Block>
 	type Error = ConsensusError;
 
 	fn import_block(&self, mut block: ImportBlock<Block>, new_cache: HashMap<well_known_cache_keys::Id, Vec<u8>>)
-		-> Result<ImportResult, Self::Error>
+		-> Result<ImportResult<Block::Hash, NumberFor<Block>>, Self::Error>
 	{
 		let hash = block.post_header().hash();
 		let number = block.header.number().clone();
@@ -505,7 +505,7 @@ impl<B, E, Block: BlockT<Hash=H256>, RA, PRA> BlockImport<Block>
 		hash: Block::Hash,
 		number: NumberFor<Block>,
 		parent_hash: Block::Hash,
-	) -> Result<ImportResult, Self::Error> {
+	) -> Result<ImportResult<Block::Hash, NumberFor<Block>>, Self::Error> {
 		self.inner.check_block(hash, number, parent_hash)
 	}
 }

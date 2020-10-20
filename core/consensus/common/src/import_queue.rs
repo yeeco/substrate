@@ -220,7 +220,7 @@ pub enum BlockImportWorkerMsg<B: BlockT> {
 	ImportBlocks(BlockOrigin, Vec<IncomingBlock<B>>),
 	Imported(
 		Vec<(
-			Result<BlockImportResult<NumberFor<B>>, BlockImportError>,
+			Result<BlockImportResult<B::Hash, NumberFor<B>>, BlockImportError>,
 			B::Hash,
 		)>,
 	),
@@ -548,11 +548,11 @@ pub trait Link<B: BlockT>: Send {
 
 /// Block import successful result.
 #[derive(Debug, PartialEq)]
-pub enum BlockImportResult<N: ::std::fmt::Debug + PartialEq> {
+pub enum BlockImportResult<H, N: ::std::fmt::Debug + PartialEq> {
 	/// Imported known block.
 	ImportedKnown(N),
 	/// Imported unknown block.
-	ImportedUnknown(N, ImportedAux, Option<Origin>),
+	ImportedUnknown(N, ImportedAux<H, N>, Option<Origin>),
 }
 
 /// Block import error.
@@ -578,7 +578,7 @@ pub fn import_single_block<B: BlockT, V: Verifier<B>>(
 	block_origin: BlockOrigin,
 	block: IncomingBlock<B>,
 	verifier: Arc<V>,
-) -> Result<BlockImportResult<NumberFor<B>>, BlockImportError> {
+) -> Result<BlockImportResult<B::Hash, NumberFor<B>>, BlockImportError> {
 	let peer = block.origin;
 
 	let (header, justification, proof) = match (block.header, block.justification, block.proof) {
