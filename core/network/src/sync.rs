@@ -333,6 +333,19 @@ impl<B: BlockT> PendingJustifications<B> {
         self.pending_requests.push_front(request);
     }
 
+    fn skip_justification_requests(&mut self, justifications: Vec<(B::Hash, NumberFor<B>)>) {
+
+        for (hash, _number) in justifications {
+            self.justifications.finalize_root(&hash);
+        }
+
+        self.previous_requests.clear();
+        self.peer_requests.clear();
+        self.pending_requests =
+            self.justifications.roots().map(|(h, n, _)| (h.clone(), n.clone())).collect();
+
+    }
+
     /// Processes the response for the request previously sent to the given
     /// peer. Queues a retry in case the given justification
     /// was `None`.
@@ -900,6 +913,10 @@ impl<B: BlockT> ChainSync<B> {
         self.justifications.justification_import_result(hash, number, success);
 
         self.justifications.dispatch(&mut self.peers, protocol, &*self.import_queue);
+    }
+
+    pub fn skip_justification_requests(&mut self, justifications: Vec<(B::Hash, NumberFor<B>)>) {
+        self.justifications.skip_justification_requests(justifications);
     }
 
     pub fn stop(&self) {

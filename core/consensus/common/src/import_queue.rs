@@ -541,6 +541,8 @@ pub trait Link<B: BlockT>: Send {
 	fn restart(&self) {}
 	/// Hold sync.
 	fn hold(&self) {}
+	/// Skip justifications
+	fn skip_justification_requests(&self, _justifications: Vec<(B::Hash, NumberFor<B>)>) {}
 	/// Synchronization request has been processed.
 	#[cfg(any(test, feature = "test-helpers"))]
 	fn synchronized(&self) {}

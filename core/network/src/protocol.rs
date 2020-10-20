@@ -269,6 +269,8 @@ pub enum ProtocolMsg<B: BlockT, S: NetworkSpecialization<B>> {
 	Tick,
 	/// Hold sync
 	HoldSync,
+	/// Skip justification
+	SkipJustificationRequests(Vec<(B::Hash, NumberFor<B>)>),
 	/// Synchronization request.
 	#[cfg(any(test, feature = "test-helpers"))]
 	Synchronize,
@@ -448,6 +450,9 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 				let mut context =
 					ProtocolContext::new(&mut self.context_data, &self.network_chan);
 				self.sync.hold(&mut context, true);
+			},
+			ProtocolMsg::SkipJustificationRequests(justifications) => {
+				self.sync.skip_justification_requests(justifications);
 			}
 			#[cfg(any(test, feature = "test-helpers"))]
 			ProtocolMsg::Synchronize => self.network_chan.send(NetworkMsg::Synchronized),
