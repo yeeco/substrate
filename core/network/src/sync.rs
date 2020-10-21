@@ -252,7 +252,6 @@ impl<B: BlockT> PendingJustifications<B> {
         &mut self,
         justification: &PendingJustification<B>,
         is_descendent_of: F,
-        force: bool,
     ) where F: Fn(&B::Hash, &B::Hash) -> Result<bool, ClientError> {
         trace!(target: "sync", "Queue justification request: hash: {} number: {} justifications_finalized: {:?}", justification.0.clone(), justification.1.clone(), self.justifications.best_finalized_number);
 
@@ -267,24 +266,6 @@ impl<B: BlockT> PendingJustifications<B> {
                       justification.1,
                       err,
                 );
-
-                if force {
-                    let in_root = self.justifications.roots().find(|(&hash, &number, data)| {
-                        justification.0 == hash && justification.1 == number
-                    }).is_some();
-                    if in_root {
-                        let in_pending = self.pending_requests.contains(&justification);
-                        let in_peer = self.peer_requests.iter().find(|(_, (j, _))| {
-                            justification == j
-                        }).is_some();
-
-                        info!(target: "sync", "Force queueing request: {:?}, in_pending: {}, in_peer: {}", justification, in_pending, in_peer);
-                        if !in_pending && !in_peer {
-                            self.pending_requests.push_back((justification.0, justification.1));
-                        }
-                    }
-                }
-
                 return;
 			},
 			_ => {},
@@ -893,12 +874,11 @@ impl<B: BlockT> ChainSync<B> {
     /// Request a justification for the given block.
     ///
     /// Queues a new justification request and tries to dispatch all pending requests.
-    pub fn request_justification(&mut self, hash: &B::Hash, number: NumberFor<B>, protocol: &mut Context<B>, force: bool) {
+    pub fn request_justification(&mut self, hash: &B::Hash, number: NumberFor<B>, protocol: &mut Context<B>) {
         trace!(target: "sync", "Request justification: number: {}, hash: {}", number, hash);
         self.justifications.queue_request(
             &(*hash, number),
             |base, block| protocol.client().is_descendent_of(base, block),
-            force,
         );
 
         self.justifications.dispatch(&mut self.peers, protocol, &*self.import_queue);
