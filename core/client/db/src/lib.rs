@@ -24,44 +24,45 @@
 //!
 //! Finality implies canonicality but not vice-versa.
 
+use std::collections::HashMap;
+use std::io;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use hash_db::Hasher;
+use kvdb::{DBTransaction, KeyValueDB};
+use log::{debug, trace, warn};
+use parity_codec::{Decode, Encode};
+use parking_lot::{Mutex, RwLock};
+
+use client::backend::NewBlockState;
+use client::blockchain::HeaderBackend;
+use client::children;
+use client::ExecutionStrategies;
+#[cfg(feature = "test-helpers")]
+use client::in_mem::Backend as InMemoryBackend;
+use client::leaves::{FinalizationDisplaced, LeafSet};
+use consensus_common::well_known_cache_keys;
+use executor::RuntimeInfo;
+use primitives::{Blake2Hasher, ChangesTrieConfiguration, convert_hash, H256};
+use primitives::storage::well_known_keys;
+use runtime_primitives::{ChildrenStorageOverlay, generic::BlockId, Justification, Proof, StorageOverlay};
+use runtime_primitives::BuildStorage;
+use runtime_primitives::traits::{As, Block as BlockT, Digest, DigestItem, Header as HeaderT, NumberFor, Zero};
+pub use state_db::PruningMode;
+use state_db::StateDb;
+use state_machine::{CodeExecutor, DBValue};
+use state_machine::backend::Backend as StateBackend;
+use trie::{MemoryDB, prefixed_key, PrefixedMemoryDB};
+
+use crate::storage_cache::{CachingState, new_shared_cache, SharedCache};
+use crate::utils::{block_id_to_lookup_key, db_err, Meta, meta_keys, open_database, read_db, read_meta};
+
 pub mod light;
 
 mod cache;
 mod storage_cache;
 mod utils;
-
-use std::sync::Arc;
-use std::path::PathBuf;
-use std::io;
-use std::collections::HashMap;
-
-use client::backend::NewBlockState;
-use client::blockchain::HeaderBackend;
-use client::ExecutionStrategies;
-use parity_codec::{Decode, Encode};
-use hash_db::Hasher;
-use kvdb::{KeyValueDB, DBTransaction};
-use trie::{MemoryDB, PrefixedMemoryDB, prefixed_key};
-use parking_lot::{Mutex, RwLock};
-use primitives::{H256, Blake2Hasher, ChangesTrieConfiguration, convert_hash};
-use primitives::storage::well_known_keys;
-use runtime_primitives::{generic::BlockId, Justification, StorageOverlay, ChildrenStorageOverlay, Proof};
-use runtime_primitives::traits::{Block as BlockT, Header as HeaderT, As, NumberFor, Zero, Digest, DigestItem};
-use runtime_primitives::BuildStorage;
-use state_machine::backend::Backend as StateBackend;
-use executor::RuntimeInfo;
-use state_machine::{CodeExecutor, DBValue};
-use crate::utils::{Meta, db_err, meta_keys, open_database, read_db, block_id_to_lookup_key, read_meta};
-use client::leaves::{LeafSet, FinalizationDisplaced};
-use client::children;
-use state_db::StateDb;
-use consensus_common::well_known_cache_keys;
-use crate::storage_cache::{CachingState, SharedCache, new_shared_cache};
-use log::{trace, debug, warn};
-pub use state_db::PruningMode;
-
-#[cfg(feature = "test-helpers")]
-use client::in_mem::Backend as InMemoryBackend;
 
 const CANONICALIZATION_DELAY: u64 = 4096;
 const MIN_BLOCKS_TO_KEEP_CHANGES_TRIES_FOR: u64 = 32768;
@@ -1177,33 +1178,28 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 		if number > best {
 			return Ok(As::sa(0))
 		}
-		if number > finalized {
-			while  best > finalized {
-				if number == best {
-					break;
-				}
-				let mut transaction = DBTransaction::new();
-				match self.storage.state_db.revert_one() {
-					Some(commit) => {
-						apply_state_commit(&mut transaction, commit);
-						let removed = self.blockchain.header(BlockId::Number(best))?.ok_or_else(
-							|| client::error::ErrorKind::UnknownBlock(
-								format!("Error reverting to {}. Block hash not found.", best)))?;
+		while best > finalized {
+			let mut transaction = DBTransaction::new();
+			match self.storage.state_db.revert_one() {
+				Some(commit) => {
+					apply_state_commit(&mut transaction, commit);
+					let removed = self.blockchain.header(BlockId::Number(best))?.ok_or_else(
+						|| client::error::ErrorKind::UnknownBlock(
+							format!("Error reverting to {}. Block hash not found.", best)))?;
 
-						best -= As::sa(1);  // prev block
-						let hash = self.blockchain.hash(best)?.ok_or_else(
-							|| client::error::ErrorKind::UnknownBlock(
-								format!("Error reverting to {}. Block hash not found.", best)))?;
-						let key = utils::number_and_hash_to_lookup_key(best.clone(), &hash);
-						transaction.put(columns::META, meta_keys::BEST_BLOCK, &key);
-						transaction.delete(columns::KEY_LOOKUP, removed.hash().as_ref());
-						children::remove_children(&mut transaction, columns::META, meta_keys::CHILDREN_PREFIX, hash);
-						self.storage.db.write(transaction).map_err(db_err)?;
-						self.blockchain.update_meta(hash, best, true, false);
-						self.blockchain.leaves.write().revert(removed.hash().clone(), removed.number().clone(), removed.parent_hash().clone());
-					}
-					None => return Ok(best)
+					best -= As::sa(1);  // prev block
+					let hash = self.blockchain.hash(best)?.ok_or_else(
+						|| client::error::ErrorKind::UnknownBlock(
+							format!("Error reverting to {}. Block hash not found.", best)))?;
+					let key = utils::number_and_hash_to_lookup_key(best.clone(), &hash);
+					transaction.put(columns::META, meta_keys::BEST_BLOCK, &key);
+					transaction.delete(columns::KEY_LOOKUP, removed.hash().as_ref());
+					children::remove_children(&mut transaction, columns::META, meta_keys::CHILDREN_PREFIX, hash);
+					self.storage.db.write(transaction).map_err(db_err)?;
+					self.blockchain.update_meta(hash, best, true, false);
+					self.blockchain.leaves.write().revert(removed.hash().clone(), removed.number().clone(), removed.parent_hash().clone());
 				}
+				None => return Ok(best)
 			}
 		}
 
@@ -1297,15 +1293,18 @@ where Block: BlockT<Hash=H256> {}
 #[cfg(test)]
 mod tests {
 	use hash_db::HashDB;
-	use super::*;
-	use crate::columns;
+
 	use client::backend::Backend as BTrait;
-	use client::blockchain::Backend as BLBTrait;
 	use client::backend::BlockImportOperation as Op;
-	use runtime_primitives::testing::{Header, Block as RawBlock, ExtrinsicWrapper};
-	use runtime_primitives::traits::{Hash, BlakeTwo256};
-	use state_machine::{TrieMut, TrieDBMut, ChangesTrieRootsStorage, ChangesTrieStorage};
+	use client::blockchain::Backend as BLBTrait;
+	use runtime_primitives::testing::{Block as RawBlock, ExtrinsicWrapper, Header};
+	use runtime_primitives::traits::{BlakeTwo256, Hash};
+	use state_machine::{ChangesTrieRootsStorage, ChangesTrieStorage, TrieDBMut, TrieMut};
 	use test_client;
+
+	use crate::columns;
+
+	use super::*;
 
 	type Block = RawBlock<ExtrinsicWrapper<u64>>;
 
