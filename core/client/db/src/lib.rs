@@ -1249,8 +1249,9 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 			&mut transaction,
 			&header,
 			hash,
-			finalization_displaced,
+			&mut None,
 		)?;
+		self.storage.db.write(transaction).map_err(db_gierr)?;
 
 		Ok(best)
 	}
