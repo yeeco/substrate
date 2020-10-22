@@ -1247,8 +1247,8 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 		let header = self.blockchain.expect_header(block)?;
 		self.note_finalized(
 			&mut transaction,
-			header,
-			*hash,
+			&header,
+			hash,
 			finalization_displaced,
 		)?;
 
