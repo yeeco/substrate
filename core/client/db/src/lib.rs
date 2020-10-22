@@ -1251,7 +1251,7 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 			hash,
 			&mut None,
 		)?;
-		self.storage.db.write(transaction).map_err(db_gierr)?;
+		self.storage.db.write(transaction).map_err(db_err)?;
 
 		Ok(best)
 	}
