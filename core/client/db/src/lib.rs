@@ -1179,6 +1179,9 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 			return Ok(As::sa(0))
 		}
 		while best > finalized {
+			if number == best {
+				break;
+			}
 			let mut transaction = DBTransaction::new();
 			match self.storage.state_db.revert_one() {
 				Some(commit) => {
