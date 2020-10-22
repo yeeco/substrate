@@ -1240,8 +1240,18 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 				self.blockchain.update_meta(hash, best, true, true);
 			}
 		}
-		let res = self.finalize_block(BlockId::Number(best), None, None);
-		warn!("{:?}", res);
+
+		let mut transaction = DBTransaction::new();
+		let block = BlockId::Number(best);
+		let hash = self.blockchain.expect_block_hash_from_id(&block)?;
+		let header = self.blockchain.expect_header(block)?;
+		self.note_finalized(
+			&mut transaction,
+			header,
+			*hash,
+			finalization_displaced,
+		)?;
+
 		Ok(best)
 	}
 
