@@ -1215,20 +1215,14 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 					|| client::error::ErrorKind::UnknownBlock(
 						format!("Error reverting to {}. Block hash not found.", best)))?;
 				let key = utils::number_and_hash_to_lookup_key(best, &dropped_hash);
-				transaction.delete(columns::KEY_LOOKUP, &key);
-				let key = match utils::block_id_to_lookup_key(&self.storage.db, columns::KEY_LOOKUP, BlockId::Hash(dropped_hash)) {
-					Ok(Some(v)) => v,
-					_ => panic!("can't get lokup key")
-				};
 				transaction.delete(columns::HEADER, &key);
 				transaction.delete(columns::BODY, &key);
 				transaction.delete(columns::JUSTIFICATION, &key);
 				transaction.delete(columns::PROOF, &key);
-				utils::remove_number_to_key_mapping(
-					&mut transaction,
-					columns::KEY_LOOKUP,
-					best
-				);
+				utils::remove_key_mappings(&mut transaction,
+										   columns::KEY_LOOKUP,
+										   best,
+										   dropped_hash);
 				children::remove_children(&mut transaction, columns::META, meta_keys::CHILDREN_PREFIX, dropped_hash);
 
 				// set new state to db

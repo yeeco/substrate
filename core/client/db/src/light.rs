@@ -614,18 +614,14 @@ impl<Block> LightBlockchainStorage<Block> for LightStorage<Block>
 				let dropped_hash = header(best)?.ok_or_else(
 					|| client::error::ErrorKind::UnknownBlock(
 						format!("Error reverting to {}. Block hash not found.", best)))?.hash();
-				let key = match utils::block_id_to_lookup_key(&self.db, columns::KEY_LOOKUP, BlockId::Hash(dropped_hash)) {
-					Ok(Some(v)) => v,
-					_ => panic!("can't get lokup key")
-				};
+				let key = utils::number_and_hash_to_lookup_key(best.clone(), dropped_hash.clone());
 				transaction.delete(columns::KEY_LOOKUP, &key);
 				transaction.delete(columns::HEADER, &key);
 				transaction.delete(columns::PROOF, &key);
-				utils::remove_number_to_key_mapping(
-					&mut transaction,
-					columns::KEY_LOOKUP,
-					best,
-				);
+				utils::remove_key_mappings(&mut transaction,
+										   columns::KEY_LOOKUP,
+										   best,
+										   dropped_hash);
 				children::remove_children(&mut transaction, columns::META, meta_keys::CHILDREN_PREFIX, dropped_hash);
 
 				// set new state to db
