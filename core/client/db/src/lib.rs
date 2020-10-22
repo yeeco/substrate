@@ -1230,9 +1230,12 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 				let hash = self.blockchain.hash(best)?.ok_or_else(
 					|| client::error::ErrorKind::UnknownBlock(
 						format!("Error reverting to {}. Block hash not found.", best)))?;
+				let k = state_db::to_meta_key(state_db::LAST_CANONICAL, &());
+				let v = (hash.clone(), best).encode();
 				let key = utils::number_and_hash_to_lookup_key(best.clone(), &hash);
 				transaction.put(columns::META, meta_keys::BEST_BLOCK, &key);
 				transaction.put(columns::META, meta_keys::FINALIZED_BLOCK, &key);
+				transaction.put(columns::STATE, k.as_slice(), v.as_slice());
 				self.storage.db.write(transaction).map_err(db_err)?;
 				self.blockchain.update_meta(hash, best, true, true);
 			}
