@@ -1241,21 +1241,6 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 			}
 		}
 
-		let mut transaction = DBTransaction::new();
-		let block = BlockId::Number(best);
-		let hash = self.blockchain.expect_block_hash_from_id(&block)?;
-		let commit = self.storage.state_db.canonicalize_block(&hash)
-			.map_err(|e: state_db::Error<io::Error>| client::error::Error::from(format!("State database error: {:?}", e)))?;
-		apply_state_commit(&mut transaction, commit);
-		// let header = self.blockchain.expect_header(block)?;
-		// self.note_finalized(
-		// 	&mut transaction,
-		// 	&header,
-		// 	hash,
-		// 	&mut None,
-		// )?;
-		self.storage.db.write(transaction).map_err(db_err)?;
-
 		Ok(best)
 	}
 
