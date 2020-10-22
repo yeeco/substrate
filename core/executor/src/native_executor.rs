@@ -212,7 +212,7 @@ impl<D: NativeExecutionDispatch> CodeExecutor<Blake2Hasher> for NativeExecutor<D
 					.map_or(false, |v| v.can_call_with(&self.native_version.runtime_version)),
 				native_call,
 			) {
-				(_, false, _) => {
+				(false, false, _) => {
 					trace!(
 						target: "executor",
 						"Request for native execution failed (native: {}, chain: {})",

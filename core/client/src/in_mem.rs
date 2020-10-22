@@ -461,6 +461,10 @@ impl<Block: BlockT> light::blockchain::Storage<Block> for Blockchain<Block>
 	fn genesis_state<H>(&self) -> Option<InMemory<H>>{
 		None
 	}
+
+	fn revert(&self, _number: <<Block as BlockT>::Header as HeaderT>::Number) -> error::Result<<<Block as BlockT>::Header as HeaderT>::Number> {
+		Ok(As::sa(0))
+	}
 }
 
 /// In-memory operation.

@@ -24,7 +24,7 @@ use parking_lot::RwLock;
 
 use runtime_primitives::{generic::BlockId, Justification, Proof, StorageOverlay, ChildrenStorageOverlay};
 use state_machine::{Backend as StateBackend, TrieBackend, backend::InMemory as InMemoryState};
-use runtime_primitives::traits::{Block as BlockT, NumberFor, Zero, Header};
+use runtime_primitives::traits::{Block as BlockT, NumberFor, As, Zero, Header};
 use crate::in_mem::{self, check_genesis_storage};
 use crate::backend::{AuxStore, Backend as ClientBackend, BlockImportOperation, RemoteBackend, NewBlockState};
 use crate::blockchain::HeaderBackend as BlockchainHeaderBackend;
@@ -42,6 +42,7 @@ const IN_MEMORY_EXPECT_PROOF: &str = "InMemory state backend has Void error type
 
 /// Light client backend.
 pub struct Backend<S, F, H, Block> {
+	storage: Arc<S>,
 	blockchain: Arc<Blockchain<S, F>>,
 	genesis_state: RwLock<Option<InMemoryState<H>>>,
 	phantom: PhantomData<Block>,
@@ -87,6 +88,7 @@ impl<S, F, H, Block> Backend<S, F, H, Block> where
 		info!("New light backend: genesis_state is_some: {}", genesis_state.is_some());
 
 		Self {
+			storage: blockchain.storage().clone(),
 			blockchain,
 			genesis_state: RwLock::new(genesis_state),
 			phantom: Default::default(),
@@ -225,8 +227,8 @@ impl<S, F, Block, H> ClientBackend<Block, H> for Backend<S, F, H, Block> where
 		}))
 	}
 
-	fn revert(&self, _n: NumberFor<Block>) -> ClientResult<NumberFor<Block>> {
-		Err(ClientErrorKind::NotAvailableOnLightClient.into())
+	fn revert(&self, number: NumberFor<Block>) -> ClientResult<NumberFor<Block>> {
+		self.storage.revert(number)
 	}
 }
 

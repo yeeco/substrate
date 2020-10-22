@@ -74,12 +74,14 @@ pub trait Storage<Block: BlockT>: AuxStore + BlockchainHeaderBackend<Block> {
 
 	/// Get genesis sate
 	fn genesis_state<H>(&self) -> Option<InMemory<H>>;
+
+	fn revert(&self, number: <<Block as BlockT>::Header as HeaderT>::Number) -> ClientResult<<<Block as BlockT>::Header as HeaderT>::Number>;
 }
 
 /// Light client blockchain.
 pub struct Blockchain<S, F> {
 	fetcher: Mutex<Weak<F>>,
-	storage: S,
+	storage: Arc<S>,
 }
 
 impl<S, F> Blockchain<S, F> {
@@ -87,7 +89,7 @@ impl<S, F> Blockchain<S, F> {
 	pub fn new(storage: S) -> Self {
 		Self {
 			fetcher: Mutex::new(Default::default()),
-			storage,
+			storage: Arc::new(storage),
 		}
 	}
 
@@ -102,8 +104,8 @@ impl<S, F> Blockchain<S, F> {
 	}
 
 	/// Get storage reference.
-	pub fn storage(&self) -> &S {
-		&self.storage
+	pub fn storage(&self) -> Arc<S> {
+		self.storage.clone()
 	}
 }
 
@@ -306,5 +308,7 @@ pub mod tests {
 		}
 
 		fn proof(&self, id: &BlockId<Block>) -> Option<Proof> { None }
+
+		fn revert(&self, _number: <<Block as BlockT>::Header as HeaderT>::Number) -> ClientResult<Header::Number> { Ok(As::sa(0))}
 	}
 }
