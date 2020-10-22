@@ -1240,7 +1240,8 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 				self.blockchain.update_meta(hash, best, true, true);
 			}
 		}
-
+		let res = self.finalize_block(BlockId::Number(best), None, None);
+		warn!("{:?}", res);
 		Ok(best)
 	}
 
