@@ -1235,7 +1235,7 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 				let key = utils::number_and_hash_to_lookup_key(best.clone(), &hash);
 				transaction.put(columns::META, meta_keys::BEST_BLOCK, &key);
 				transaction.put(columns::META, meta_keys::FINALIZED_BLOCK, &key);
-				transaction.put(columns::STATE, k.as_slice(), v.as_slice());
+				transaction.put(columns::STATE_META, k.as_slice(), v.as_slice());
 				self.storage.db.write(transaction).map_err(db_err)?;
 				self.blockchain.update_meta(hash, best, true, true);
 			}
