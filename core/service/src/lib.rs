@@ -80,6 +80,11 @@ pub type NetworkProviderParams<F, EH> where
 	<F as ServiceFactory>::IdentifySpecialization,
 >;
 
+pub trait Network<B: BlockT>: Send + Sync{
+	fn on_block_imported(&self, hash: B::Hash, header: B::Header);
+	fn on_block_finalized(&self, hash: B::Hash, header: B::Header);
+}
+
 pub trait NetworkProvider<F, EH> where
 	F: ServiceFactory,
 	EH: network::service::ExHashT,
@@ -90,13 +95,14 @@ pub trait NetworkProvider<F, EH> where
 		params: NetworkProviderParams<F, EH>,
 		protocol_id: network::ProtocolId,
 		import_queue: Box<dyn consensus_common::import_queue::ImportQueue<FactoryBlock<F>>>,
-	) -> Result<network::NetworkChan<FactoryBlock<F>>, network::Error>;
+	) -> Result<(Arc<dyn Network<F::Block>>, network::NetworkChan<FactoryBlock<F>>), network::Error>;
 }
 
 /// Substrate service.
 pub struct Service<Components: components::Components> {
 	client: Arc<ComponentClient<Components>>,
 	network: Option<Arc<components::NetworkService<Components::Factory>>>,
+	network2: Option<Arc<dyn Network<<Components::Factory as ServiceFactory>::Block>>>,
 	transaction_pool: Arc<TransactionPool<Components::TransactionPoolApi>>,
 	inherents_pool: Arc<InherentsPool<ComponentExtrinsic<Components>>>,
 	keystore: Keystore,
@@ -116,6 +122,30 @@ pub fn new_client<Factory: components::ServiceFactory>(config: &FactoryFullConfi
 {
 	let executor = NativeExecutor::new(config.default_heap_pages);
 	let (client, _) = components::FullComponents::<Factory>::build_client(
+		config,
+		executor,
+	)?;
+	Ok(client)
+}
+
+/// Creates bare full-client without any networking.
+pub fn new_full_client<Factory: components::ServiceFactory>(config: &FactoryFullConfiguration<Factory>)
+															-> Result<Arc<ComponentClient<components::FullComponents<Factory>>>, error::Error>
+{
+	let executor = NativeExecutor::new(config.default_heap_pages);
+	let (client, _) = components::FullComponents::<Factory>::build_client(
+		config,
+		executor,
+	)?;
+	Ok(client)
+}
+
+/// Creates bare light-client without any networking.
+pub fn new_light_client<Factory: components::ServiceFactory>(config: &FactoryFullConfiguration<Factory>)
+															 -> Result<Arc<ComponentClient<components::LightComponents<Factory>>>, error::Error>
+{
+	let executor = NativeExecutor::new(config.default_heap_pages);
+	let (client, _) = components::LightComponents::<Factory>::build_client(
 		config,
 		executor,
 	)?;
@@ -179,7 +209,7 @@ impl<Components: components::Components> Service<Components> {
 		 });
 
 		let network_params = network::config::Params {
-			config: network::config::ProtocolConfig { roles: config.roles, max_leading_blocks: config.max_leading_blocks },
+			config: network::config::ProtocolConfig { roles: config.roles},
 			network_config: config.network.clone(),
 			chain: client.clone(),
 			on_demand: on_demand.as_ref().map(|d| d.clone() as _),
@@ -363,6 +393,7 @@ impl<Components: components::Components> Service<Components> {
 		Ok(Service {
 			client,
 			network: Some(network),
+			network2: None,
 			transaction_pool,
 			inherents_pool,
 			signal: Some(signal),
@@ -434,7 +465,7 @@ impl<Components: components::Components> Service<Components> {
 		});
 
 		let network_params = network::config::Params {
-			config: network::config::ProtocolConfig { roles: config.roles, max_leading_blocks: config.max_leading_blocks },
+			config: network::config::ProtocolConfig { roles: config.roles },
 			network_config: config.network.clone(),
 			chain: client.clone(),
 			on_demand: on_demand.as_ref().map(|d| d.clone() as _),
@@ -457,7 +488,7 @@ impl<Components: components::Components> Service<Components> {
 		};
 
 		let has_bootnodes = !network_params.network_config.boot_nodes.is_empty();
-		let network_chan = network_provider.provide_network(
+		let (network, network_chan) = network_provider.provide_network(
 			network_id,
 			network_params,
 			protocol_id,
@@ -466,7 +497,7 @@ impl<Components: components::Components> Service<Components> {
 		on_demand.map(|on_demand| on_demand.set_network_sender(network_chan));
 
 		let inherents_pool = Arc::new(InherentsPool::default());
-		/*
+
 		let offchain_workers = None;
 
 		{
@@ -552,11 +583,11 @@ impl<Components: components::Components> Service<Components> {
 
 			task_executor.spawn(events);
 		}
-		*/
 
 		Ok(Service {
 			client,
 			network: None,
+			network2: Some(network),
 			transaction_pool,
 			inherents_pool,
 			keystore,

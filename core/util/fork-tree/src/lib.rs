@@ -82,7 +82,7 @@ pub enum FinalizationResult<V> {
 #[derive(Clone, Debug, Decode, Encode, PartialEq)]
 pub struct ForkTree<H, N, V> {
 	roots: Vec<Node<H, N, V>>,
-	best_finalized_number: Option<N>,
+	pub best_finalized_number: Option<N>,
 }
 
 impl<H, N, V> ForkTree<H, N, V> where

@@ -27,7 +27,7 @@ use crate::codec::{Encode, Decode};
 use log::trace;
 
 const NON_CANONICAL_JOURNAL: &[u8] = b"noncanonical_journal";
-const LAST_CANONICAL: &[u8] = b"last_canonical";
+pub const LAST_CANONICAL: &[u8] = b"last_canonical";
 
 /// See module documentation.
 pub struct NonCanonicalOverlay<BlockHash: Hash, Key: Hash> {

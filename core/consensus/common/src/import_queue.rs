@@ -52,9 +52,6 @@ pub type SharedJustificationImport<B> = Arc<dyn JustificationImport<B, Error=Con
 /// Maps to the Origin used by the network.
 pub type Origin = libp2p::PeerId;
 
-/// Interval at which we perform time based maintenance
-const TICK_TIMEOUT: time::Duration = time::Duration::from_millis(1000);
-
 /// Block data used by the queue.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct IncomingBlock<B: BlockT> {
@@ -210,7 +207,6 @@ pub enum BlockImportMsg<B: BlockT> {
 	ImportBlocks(BlockOrigin, Vec<IncomingBlock<B>>),
 	ImportJustification(Origin, B::Hash, NumberFor<B>, Justification),
 	Start(Box<Link<B>>, Sender<Result<(), std::io::Error>>),
-	Tick,
 	Stop,
 	#[cfg(any(test, feature = "test-helpers"))]
 	Synchronize,
@@ -220,7 +216,7 @@ pub enum BlockImportWorkerMsg<B: BlockT> {
 	ImportBlocks(BlockOrigin, Vec<IncomingBlock<B>>),
 	Imported(
 		Vec<(
-			Result<BlockImportResult<NumberFor<B>>, BlockImportError>,
+			Result<BlockImportResult<B::Hash, NumberFor<B>>, BlockImportError>,
 			B::Hash,
 		)>,
 	),
@@ -261,8 +257,7 @@ impl<B: BlockT> BlockImporter<B> {
 					link: None,
 					justification_import,
 				};
-				let tick_timeout = channel::tick(TICK_TIMEOUT);
-				while importer.run(&tick_timeout) {
+				while importer.run() {
 					// Importing until all senders have been dropped...
 				}
 			})
@@ -270,7 +265,7 @@ impl<B: BlockT> BlockImporter<B> {
 		sender
 	}
 
-	fn run(&mut self, tick_timeout: &Receiver<time::Instant>) -> bool {
+	fn run(&mut self) -> bool {
 		let msg = select! {
 			recv(self.port) -> msg => {
 				match msg {
@@ -284,10 +279,7 @@ impl<B: BlockT> BlockImporter<B> {
 					Err(_) => unreachable!("1. We hold a sender to the Worker, 2. it should not quit until that sender is dropped; qed"),
 					Ok(msg) => ImportMsgType::FromWorker(msg),
 				}
-			},
-			recv(tick_timeout) -> _ => {
-				ImportMsgType::FromNetwork(BlockImportMsg::Tick)
-			},
+			}
 		};
 		match msg {
 			ImportMsgType::FromNetwork(msg) => self.handle_network_msg(msg),
@@ -309,12 +301,6 @@ impl<B: BlockT> BlockImporter<B> {
 				}
 				self.link = Some(link);
 				let _ = sender.send(Ok(()));
-			},
-			BlockImportMsg::Tick => {
-				if let Some(justification_import) = self.justification_import.as_ref() {
-					let link = self.link.as_ref().expect("qed");
-					justification_import.on_tick(&**link);
-				}
 			},
 			BlockImportMsg::Stop => return false,
 			#[cfg(any(test, feature = "test-helpers"))]
@@ -370,13 +356,18 @@ impl<B: BlockT> BlockImporter<B> {
 
 					if aux.needs_justification {
 						trace!(target: "sync", "Block imported but requires justification {}: {:?}", number, hash);
-						link.request_justification(&hash, number, false);
+						link.request_justification(&hash, number);
 					}
 
 					if aux.bad_justification {
 						if let Some(peer) = who {
 							link.useless_peer(peer, "Sent block with bad justification to import");
 						}
+					}
+
+					if aux.skip_justification_requests.len() > 0 {
+						trace!(target: "sync", "Block imported skip pending justification requests: {:?}", aux.skip_justification_requests);
+						link.skip_justification_requests(aux.skip_justification_requests);
 					}
 				},
 				Err(BlockImportError::IncompleteHeader(who)) => {
@@ -393,6 +384,9 @@ impl<B: BlockT> BlockImporter<B> {
 					if let Some(peer) = who {
 						link.note_useless_and_restart_sync(peer, "Sent us a bad block");
 					}
+				},
+				Err(BlockImportError::Hold) => {
+					link.hold();
 				},
 				Err(BlockImportError::UnknownParent) | Err(BlockImportError::Error) => {
 					link.restart();
@@ -529,13 +523,17 @@ pub trait Link<B: BlockT>: Send {
 	/// Clear all pending justification requests.
 	fn clear_justification_requests(&self) {}
 	/// Request a justification for the given block.
-	fn request_justification(&self, _hash: &B::Hash, _number: NumberFor<B>, _force: bool) {}
+	fn request_justification(&self, _hash: &B::Hash, _number: NumberFor<B>) {}
 	/// Disconnect from peer.
 	fn useless_peer(&self, _who: Origin, _reason: &str) {}
 	/// Disconnect from peer and restart sync.
 	fn note_useless_and_restart_sync(&self, _who: Origin, _reason: &str) {}
 	/// Restart sync.
 	fn restart(&self) {}
+	/// Hold sync.
+	fn hold(&self) {}
+	/// Skip justifications
+	fn skip_justification_requests(&self, _justifications: Vec<(B::Hash, NumberFor<B>)>) {}
 	/// Synchronization request has been processed.
 	#[cfg(any(test, feature = "test-helpers"))]
 	fn synchronized(&self) {}
@@ -543,11 +541,11 @@ pub trait Link<B: BlockT>: Send {
 
 /// Block import successful result.
 #[derive(Debug, PartialEq)]
-pub enum BlockImportResult<N: ::std::fmt::Debug + PartialEq> {
+pub enum BlockImportResult<H, N: ::std::fmt::Debug + PartialEq> {
 	/// Imported known block.
 	ImportedKnown(N),
 	/// Imported unknown block.
-	ImportedUnknown(N, ImportedAux, Option<Origin>),
+	ImportedUnknown(N, ImportedAux<H, N>, Option<Origin>),
 }
 
 /// Block import error.
@@ -561,6 +559,8 @@ pub enum BlockImportError {
 	BadBlock(Option<Origin>),
 	/// Block has an unknown parent
 	UnknownParent,
+	/// Hold
+	Hold,
 	/// Other Error.
 	Error,
 }
@@ -571,7 +571,7 @@ pub fn import_single_block<B: BlockT, V: Verifier<B>>(
 	block_origin: BlockOrigin,
 	block: IncomingBlock<B>,
 	verifier: Arc<V>,
-) -> Result<BlockImportResult<NumberFor<B>>, BlockImportError> {
+) -> Result<BlockImportResult<B::Hash, NumberFor<B>>, BlockImportError> {
 	let peer = block.origin;
 
 	let (header, justification, proof) = match (block.header, block.justification, block.proof) {
@@ -605,6 +605,10 @@ pub fn import_single_block<B: BlockT, V: Verifier<B>>(
 				debug!(target: "sync", "Peer gave us a bad block {}: {:?}", number, hash);
 				Err(BlockImportError::BadBlock(peer.clone()))
 			},
+			Ok(ImportResult::Hold) => {
+				debug!(target: "sync", "Hold importing block {}: {:?}", number, hash);
+				Err(BlockImportError::Hold)
+			},
 			Err(e) => {
 				debug!(target: "sync", "Error importing block {}: {:?}: {:?}", number, hash, e);
 				Err(BlockImportError::Error)
@@ -612,7 +616,7 @@ pub fn import_single_block<B: BlockT, V: Verifier<B>>(
 		}
 	};
 
-	match import_error(import_handle.check_block(hash, parent))? {
+	match import_error(import_handle.check_block(hash, number, parent))? {
 		BlockImportResult::ImportedUnknown { .. } => (),
 		r @ _ => return Ok(r), // Any other successfull result means that the block is already imported.
 	}

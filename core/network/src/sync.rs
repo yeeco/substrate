@@ -52,6 +52,8 @@ const MAX_UNKNOWN_FORK_DOWNLOAD_LEN: u32 = 32;
 const MAX_JUSTIFICATION_TO_REQUEST: u32 = 128;
 // Justification request timeout
 const JUSTIFICATION_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+// Hold wait
+const HOLD_WAIT: Duration = Duration::from_secs(60);
 
 #[derive(Debug)]
 struct PeerSync<B: BlockT> {
@@ -250,8 +252,9 @@ impl<B: BlockT> PendingJustifications<B> {
         &mut self,
         justification: &PendingJustification<B>,
         is_descendent_of: F,
-        force: bool,
     ) where F: Fn(&B::Hash, &B::Hash) -> Result<bool, ClientError> {
+        trace!(target: "sync", "Queue justification request: hash: {} number: {} justifications_finalized: {:?}", justification.0.clone(), justification.1.clone(), self.justifications.best_finalized_number);
+
         match self.justifications.import(justification.0.clone(), justification.1.clone(), (), &is_descendent_of) {
             Ok(true) => {
                 // this is a new root so we add it to the current `pending_requests`
@@ -263,24 +266,6 @@ impl<B: BlockT> PendingJustifications<B> {
                       justification.1,
                       err,
                 );
-
-                if force {
-                    let in_root = self.justifications.roots().find(|(&hash, &number, data)| {
-                        justification.0 == hash && justification.1 == number
-                    }).is_some();
-                    if in_root {
-                        let in_pending = self.pending_requests.contains(&justification);
-                        let in_peer = self.peer_requests.iter().find(|(_, (j, _))| {
-                            justification == j
-                        }).is_some();
-
-                        info!(target: "sync", "Force queueing request: {:?}, in_pending: {}, in_peer: {}", justification, in_pending, in_peer);
-                        if !in_pending && !in_peer {
-                            self.pending_requests.push_back((justification.0, justification.1));
-                        }
-                    }
-                }
-
                 return;
 			},
 			_ => {},
@@ -327,6 +312,19 @@ impl<B: BlockT> PendingJustifications<B> {
             return;
         }
         self.pending_requests.push_front(request);
+    }
+
+    fn skip_justification_requests(&mut self, justifications: Vec<(B::Hash, NumberFor<B>)>) {
+
+        for (hash, _number) in justifications {
+            self.justifications.finalize_root(&hash);
+        }
+
+        self.previous_requests.clear();
+        self.peer_requests.clear();
+        self.pending_requests =
+            self.justifications.roots().map(|(h, n, _)| (h.clone(), n.clone())).collect();
+
     }
 
     /// Processes the response for the request previously sent to the given
@@ -430,7 +428,7 @@ pub struct ChainSync<B: BlockT> {
     is_stopping: AtomicBool,
     is_offline: Arc<AtomicBool>,
     is_major_syncing: Arc<AtomicBool>,
-    max_leading_blocks: u64,
+    hold: Option<Instant>,
 }
 
 /// Reported sync state.
@@ -497,7 +495,7 @@ impl<B: BlockT> ChainSync<B> {
             is_stopping: Default::default(),
             is_offline,
             is_major_syncing,
-            max_leading_blocks: config.max_leading_blocks,
+            hold: Default::default(),
         }
     }
 
@@ -865,17 +863,22 @@ impl<B: BlockT> ChainSync<B> {
     /// Called periodically to perform any time-based actions.
     pub fn tick(&mut self, protocol: &mut Context<B>) {
         self.justifications.dispatch(&mut self.peers, protocol, &*self.import_queue);
+
+        if let Some(instant) = self.hold {
+            if instant.elapsed() > HOLD_WAIT {
+                self.hold(protocol, false);
+            }
+        }
     }
 
     /// Request a justification for the given block.
     ///
     /// Queues a new justification request and tries to dispatch all pending requests.
-    pub fn request_justification(&mut self, hash: &B::Hash, number: NumberFor<B>, protocol: &mut Context<B>, force: bool) {
+    pub fn request_justification(&mut self, hash: &B::Hash, number: NumberFor<B>, protocol: &mut Context<B>) {
         trace!(target: "sync", "Request justification: number: {}, hash: {}", number, hash);
         self.justifications.queue_request(
             &(*hash, number),
             |base, block| protocol.client().is_descendent_of(base, block),
-            force,
         );
 
         self.justifications.dispatch(&mut self.peers, protocol, &*self.import_queue);
@@ -886,8 +889,14 @@ impl<B: BlockT> ChainSync<B> {
         self.justifications.clear();
     }
 
-    pub fn justification_import_result(&mut self, hash: B::Hash, number: NumberFor<B>, success: bool) {
+    pub fn justification_import_result(&mut self, hash: B::Hash, number: NumberFor<B>, success: bool, protocol: &mut Context<B>) {
         self.justifications.justification_import_result(hash, number, success);
+
+        self.justifications.dispatch(&mut self.peers, protocol, &*self.import_queue);
+    }
+
+    pub fn skip_justification_requests(&mut self, justifications: Vec<(B::Hash, NumberFor<B>)>) {
+        self.justifications.skip_justification_requests(justifications);
     }
 
     pub fn stop(&self) {
@@ -1065,6 +1074,50 @@ impl<B: BlockT> ChainSync<B> {
         }
     }
 
+    /// Hold the sync process.
+    pub(crate) fn hold(&mut self, protocol: &mut Context<B>, hold: bool) {
+        trace!(target: "sync", "Hold importing, current: {:?}, hold: {}", self.hold, hold);
+        if hold {
+            if let Some(instant) = self.hold {
+                return;
+            }
+            self.hold = Some(Instant::now());
+        } else {
+            self.hold = None;
+        }
+        self.queue_blocks.clear();
+        self.best_importing_number = Zero::zero();
+        self.blocks.clear();
+        match protocol.client().info() {
+            Ok(info) => {
+                self.best_queued_hash = info.best_queued_hash.unwrap_or(info.chain.best_hash);
+                self.best_queued_number = info.best_queued_number.unwrap_or(info.chain.best_number);
+                debug!(target: "sync", "Hold with {} ({})", self.best_queued_number, self.best_queued_hash);
+            },
+            Err(e) => {
+                debug!(target: "sync", "Error reading blockchain: {:?}", e);
+                self.best_queued_hash = self.genesis_hash;
+                self.best_queued_number = As::sa(0);
+            }
+        }
+
+        let mut ids = vec![];
+        self.peers.retain(|k, v| {
+            match v.state {
+                PeerSyncState::DownloadingJustification(_) => true,
+                _ => {
+                    ids.push(k.clone());
+                    false
+                },
+            }
+        });
+
+        for id in ids {
+            self.new_peer(protocol, id);
+        }
+
+    }
+
     /// Clear all sync data.
     pub(crate) fn clear(&mut self) {
         self.blocks.clear();
@@ -1115,10 +1168,12 @@ impl<B: BlockT> ChainSync<B> {
 
     // Issue a request for a peer to download new blocks, if any are available
     fn download_new(&mut self, protocol: &mut Context<B>, who: PeerId) {
-        let (should_download, leading_number, max_to_download, best_number, _finalized_number) = self.should_download(protocol);
-        if !should_download {
+
+        if let Some(instant) = self.hold {
+            trace!(target: "sync", "Hold importing, download new paused.");
             return;
         }
+
         if let Some(ref mut peer) = self.peers.get_mut(&who) {
             // when there are too many blocks in the queue => do not try to download new blocks
             if self.queue_blocks.len() > MAX_IMPORTING_BLOCKS {
@@ -1128,16 +1183,8 @@ impl<B: BlockT> ChainSync<B> {
             match peer.state {
                 PeerSyncState::Available => {
                     trace!(target: "sync", "Considering new block download from {}, common block is {}, best is {:?}", who, peer.common_number, peer.best_number);
-
-                    if peer.common_number >= best_number && (peer.best_number > best_number + As::sa(self.max_leading_blocks)) && leading_number > 0 {
-                        debug!(target: "sync", "Too much behind, pause best block syncing.");
-                        return;
-                    }
-
-                    let count = ::std::cmp::min( max_to_download as usize, MAX_BLOCKS_TO_REQUEST);
-                    if let Some(range) = self.blocks.needed_blocks(who.clone(), count, peer.best_number, peer.common_number) {
+                    if let Some(range) = self.blocks.needed_blocks(who.clone(), MAX_BLOCKS_TO_REQUEST, peer.best_number, peer.common_number) {
                         trace!(target: "sync", "Requesting blocks from {}, ({} to {})", who, range.start, range.end);
-
                         let request = message::generic::BlockRequest {
                             id: 0,
                             fields: self.required_block_attributes.clone(),
@@ -1155,27 +1202,6 @@ impl<B: BlockT> ChainSync<B> {
                 _ => trace!(target: "sync", "Peer {} is busy", who),
             }
         }
-    }
-
-    fn should_download(&self, protocol: &Context<B>) -> (bool, u64, u64, NumberFor<B>, NumberFor<B>) {
-
-        let info = protocol.client().info().expect("should always get client info");
-        let best_number = info.chain.best_number;
-        let finalized_number = info.chain.finalized_number;
-
-        // check leading number
-		let leading_number = if best_number >= finalized_number {
-            best_number - finalized_number
-        } else {
-            Zero::zero()
-        };
-        let should_download = leading_number < As::sa(self.max_leading_blocks);
-
-        let leading_number = <NumberFor<B> as As<u64>>::as_(leading_number);
-        let max_to_download = if self.max_leading_blocks >= leading_number { self.max_leading_blocks - leading_number } else { 0 };
-        debug!(target: "sync", "Check before download: best_queued_number: {}, finalized_number: {},\
-         leading_number: {}, should_download: {}, max_to_download: {}", best_number, finalized_number, leading_number, should_download, max_to_download);
-        (should_download, leading_number, max_to_download, best_number, finalized_number)
     }
 
     fn request_ancestry(protocol: &mut Context<B>, who: PeerId, block: NumberFor<B>) {

@@ -39,6 +39,7 @@ use parity_codec as codec;
 use codec::Codec;
 use std::collections::HashSet;
 use noncanonical::NonCanonicalOverlay;
+pub use noncanonical::LAST_CANONICAL;
 use pruning::RefWindow;
 use log::trace;
 
@@ -156,7 +157,7 @@ impl Default for PruningMode {
 	}
 }
 
-fn to_meta_key<S: Codec>(suffix: &[u8], data: &S) -> Vec<u8> {
+pub fn to_meta_key<S: Codec>(suffix: &[u8], data: &S) -> Vec<u8> {
 	let mut buffer = data.encode();
 	buffer.extend(suffix);
 	buffer
