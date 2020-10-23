@@ -1175,8 +1175,8 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 
 		let mut best = self.blockchain.info()?.best_number;
 		let finalized = self.blockchain.info()?.finalized_number;
-		if number > best {
-			return Ok(As::sa(0))
+		if number > finalized {
+			return Ok(best)
 		}
 		while best > finalized {
 			if number == best {

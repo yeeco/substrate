@@ -571,8 +571,8 @@ impl<Block> LightBlockchainStorage<Block> for LightStorage<Block>
 			let meta = self.meta.read();
 			(meta.best_number, meta.finalized_number)
 		};
-		if number > best {
-			return Ok(As::sa(0))
+		if number > finalized {
+			return Ok(best)
 		}
 
 		while best > finalized {
