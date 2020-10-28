@@ -144,11 +144,12 @@ impl<B: BlockT> BasicQueue<B> {
 	pub fn new<V: 'static + Verifier<B>>(
 		verifier: Arc<V>,
 		block_import: SharedBlockImport<B>,
-		justification_import: Option<SharedJustificationImport<B>>
+		justification_import: Option<SharedJustificationImport<B>>,
+		network_id: Option<u32>,
 	) -> Self {
 		let (result_sender, result_port) = channel::unbounded();
-		let worker_sender = BlockImportWorker::new(result_sender, verifier, block_import);
-		let importer_sender = BlockImporter::new(result_port, worker_sender, justification_import);
+		let worker_sender = BlockImportWorker::new(result_sender, verifier, block_import, network_id);
+		let importer_sender = BlockImporter::new(result_port, worker_sender, justification_import, network_id);
 
 		Self {
 			sender: importer_sender,
@@ -242,11 +243,10 @@ impl<B: BlockT> BlockImporter<B> {
 		result_port: Receiver<BlockImportWorkerMsg<B>>,
 		worker_sender: Sender<BlockImportWorkerMsg<B>>,
 		justification_import: Option<SharedJustificationImport<B>>,
+		network_id: Option<u32>,
 	) -> Sender<BlockImportMsg<B>> {
 		let (sender, port) = channel::bounded(4);
-		let thread_id = thread_rng().gen_range(0, 65536);
-		let name = format!("ImportQueue-{}", thread_id);
-		info!(target: "sync", "Start thread: {}", name);
+		let name = format!("ImportQueue-{}", network_id.map(|x|format!("{}", x)).unwrap_or("main".to_string()));
 		let _ = thread::Builder::new().stack_size(1024 * 1024 * 1024)
 			.name(name)
 			.spawn(move || {
@@ -432,11 +432,10 @@ impl<B: BlockT, V: 'static + Verifier<B>> BlockImportWorker<B, V> {
 		result_sender: Sender<BlockImportWorkerMsg<B>>,
 		verifier: Arc<V>,
 		block_import: SharedBlockImport<B>,
+		network_id: Option<u32>,
 	) -> Sender<BlockImportWorkerMsg<B>> {
 		let (sender, port) = channel::unbounded();
-		let thread_id = thread_rng().gen_range(0, 65536);
-		let name = format!("ImportQueueWorker-{}", thread_id);
-		info!(target: "sync", "Start thread: {}", name);
+		let name = format!("ImportQueueWorker-{}", network_id.map(|x|format!("{}", x)).unwrap_or("main".to_string()));
 		let _ = thread::Builder::new().stack_size(1024 * 1024 * 1024)
 			.name(name)
 			.spawn(move || {

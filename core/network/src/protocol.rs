@@ -81,6 +81,7 @@ pub struct Protocol<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> {
 	// similar to context_data.peers but shared with the SyncProvider.
 	connected_peers: Arc<RwLock<HashMap<PeerId, ConnectedPeer<B>>>>,
 	transaction_pool: Arc<TransactionPool<H, B>>,
+	network_id: Option<u32>,
 }
 
 /// A peer from whom we have received a Status message.
@@ -312,14 +313,13 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 		on_demand: Option<Arc<OnDemandService<B>>>,
 		transaction_pool: Arc<TransactionPool<H, B>>,
 		specialization: S,
+		network_id: Option<u32>,
 	) -> error::Result<(Sender<ProtocolMsg<B, S>>, Sender<FromNetworkMsg<B>>)> {
 		let (protocol_sender, port) = channel::unbounded();
 		let (from_network_sender, from_network_port) = channel::bounded(4);
 		let info = chain.info()?;
 		let sync = ChainSync::new(is_offline, is_major_syncing, config.clone(), &info, import_queue);
-		let thread_id = thread_rng().gen_range(0, 65536);
-		let name = format!("Protocol-{}", thread_id);
-		info!(target: "sync", "Start thread: {}", name);
+		let name = format!("Protocol-{}", network_id.map(|x|format!("{}", x)).unwrap_or("main".to_string()));
 		let _ = thread::Builder::new()
 			.name(name).stack_size(1024 * 1024 * 1024)
 			.spawn(move || {
@@ -341,6 +341,7 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 					handshaking_peers: HashMap::new(),
 					connected_peers,
 					transaction_pool: transaction_pool,
+					network_id,
 				};
 				let tick_timeout = channel::tick(TICK_TIMEOUT);
 				let propagate_timeout = channel::tick(PROPAGATE_TIMEOUT);

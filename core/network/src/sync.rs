@@ -478,7 +478,7 @@ impl<B: BlockT> ChainSync<B> {
         is_major_syncing: Arc<AtomicBool>,
         config: ProtocolConfig,
         info: &ClientInfo<B>,
-		import_queue: Box<ImportQueue<B>>
+		import_queue: Box<ImportQueue<B>>,
     ) -> Self {
         let mut required_block_attributes = message::BlockAttributes::HEADER | message::BlockAttributes::JUSTIFICATION | message::BlockAttributes::PROOF;
         if config.roles.intersects(Roles::FULL | Roles::AUTHORITY) {
@@ -1223,7 +1223,7 @@ impl<B: BlockT> ChainSync<B> {
 
     pub fn inspect(&self) {
         info!("ChainSync inspect: justification_pending_requests: {:?}", self.justifications.pending_requests);
-        info!("ChainSync inspect: justification_peer_requests: {:?}", self.justifications.peer_requests);
+        info!("ChainSync inspect: justification_peer_requests: {:?}",self.justifications.peer_requests);
         info!("ChainSync inspect: justifications: {:?}", self.justifications.justifications);
         info!("ChainSync inspect: peers: {:?}", self.peers);
         info!("ChainSync inspect: best_seen_block: {:?}", self.best_seen_block());

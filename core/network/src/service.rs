@@ -168,6 +168,7 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, I: IdentifySpecialization
 		params: Params<B, S, H, I>,
 		protocol_id: ProtocolId,
 		import_queue: Box<ImportQueue<B>>,
+		network_id: Option<u32>,
 	) -> Result<(Arc<Service<B, S, I>>, NetworkChan<B>), Error> {
 		let (network_chan, network_port) = network_channel();
 		let status_sinks = Arc::new(Mutex::new(Vec::new()));
@@ -187,6 +188,7 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, I: IdentifySpecialization
 			params.on_demand,
 			params.transaction_pool,
 			params.specialization,
+			network_id,
 		)?;
 		let versions = [(protocol::CURRENT_VERSION as u8)];
 		let registered = RegisteredProtocol::new(protocol_id, &versions[..]);
@@ -196,6 +198,7 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, I: IdentifySpecialization
 			params.network_config,
 			registered,
 			params.identify_specialization,
+			network_id,
 		)?;
 
 		let service = Arc::new(Service {
@@ -478,6 +481,7 @@ fn start_thread<B: BlockT + 'static, I: IdentifySpecialization>(
 	config: NetworkConfiguration,
 	registered: RegisteredProtocol<Message<B>>,
 	identify_specialization: I,
+	network_id: Option<u32>,
 ) -> Result<((oneshot::Sender<()>, thread::JoinHandle<()>), Arc<Mutex<NetworkService<Message<B>, I>>>, PeersetHandle), Error> {
 	// Start the main service.
 	let (service, peerset) = match start_service(config, registered, identify_specialization) {
@@ -492,9 +496,7 @@ fn start_thread<B: BlockT + 'static, I: IdentifySpecialization>(
 	let service_clone = service.clone();
 	let mut runtime = RuntimeBuilder::new().name_prefix("libp2p-").build()?;
 	let peerset_clone = peerset.clone();
-	let thread_id = thread_rng().gen_range(0, 65536);
-	let name = format!("Network-{}", thread_id);
-	info!(target: "sub-libp2p", "Start thread: {}", name);
+	let name = format!("Network-{}", network_id.map(|x|format!("{}", x)).unwrap_or("main".to_string()));
 	let thread = thread::Builder::new().stack_size(1024 * 1024 * 1024).name(name).spawn(move || {
 		let fut = run_thread(protocol_sender, service_clone, network_port, peerset_clone)
 			.select(close_rx.then(|_| Ok(())))
