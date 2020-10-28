@@ -271,6 +271,8 @@ pub enum ProtocolMsg<B: BlockT, S: NetworkSpecialization<B>> {
 	HoldSync,
 	/// Skip justification
 	SkipJustificationRequests(Vec<(B::Hash, NumberFor<B>)>),
+	/// Inspect
+	Inspect,
 	/// Synchronization request.
 	#[cfg(any(test, feature = "test-helpers"))]
 	Synchronize,
@@ -453,6 +455,9 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 			},
 			ProtocolMsg::SkipJustificationRequests(justifications) => {
 				self.sync.skip_justification_requests(justifications);
+			},
+			ProtocolMsg::Inspect => {
+				self.inspect();
 			}
 			#[cfg(any(test, feature = "test-helpers"))]
 			ProtocolMsg::Synchronize => self.network_chan.send(NetworkMsg::Synchronized),
@@ -1163,6 +1168,10 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 		self.on_demand
 			.as_ref()
 			.map(|s| s.on_remote_changes_response(who, response));
+	}
+
+	fn inspect(&self) {
+		self.sync.inspect();
 	}
 }
 

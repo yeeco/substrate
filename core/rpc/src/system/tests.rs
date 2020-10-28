@@ -77,6 +77,8 @@ impl network::SyncProvider<Block> for Status {
 	fn is_major_syncing(&self) -> bool {
 		self.is_syncing
 	}
+
+	fn inspect(&self) {}
 }
 
 

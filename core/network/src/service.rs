@@ -56,6 +56,8 @@ pub trait SyncProvider<B: BlockT>: Send + Sync {
 	fn peers(&self) -> Vec<(PeerId, PeerInfo<B>)>;
 	/// Are we in the process of downloading the chain?
 	fn is_major_syncing(&self) -> bool;
+	/// Inspect
+	fn inspect(&self);
 }
 
 /// Minimum Requirements for a Hash within Networking
@@ -342,6 +344,10 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, I: IdentifySpecialization
 	fn peers(&self) -> Vec<(PeerId, PeerInfo<B>)> {
 		let peers = (*self.peers.read()).clone();
 		peers.into_iter().map(|(idx, connected)| (idx, connected.peer_info)).collect()
+	}
+
+	fn inspect(&self) {
+		let _ = self.protocol_sender.send(ProtocolMsg::Inspect);
 	}
 }
 
