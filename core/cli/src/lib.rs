@@ -751,13 +751,20 @@ fn init_logger(pattern: &str) -> Result<(), SetLoggerError> {
 		let timestamp =
 			time::strftime("%Y-%m-%d %H:%M:%S", &now)
 				.expect("Error formatting log timestamp");
+		let name = ::std::thread::current()
+			.name()
+			.map_or_else(Default::default, |x| format!("{}", Colour::Blue.bold().paint(x)));
 
 		let mut output = if log::max_level() <= log::LevelFilter::Info {
-			format!("{} {}", Colour::Black.bold().paint(timestamp), record.args())
+			format!(
+				"{} {} {} {} {}",
+				Colour::Black.bold().paint(timestamp),
+				name,
+				record.level(),
+				record.target(),
+				record.args()
+			)
 		} else {
-			let name = ::std::thread::current()
-				.name()
-				.map_or_else(Default::default, |x| format!("{}", Colour::Blue.bold().paint(x)));
 			let millis = (now.tm_nsec as f32 / 1000000.0).round() as usize;
 			let timestamp = format!("{}.{:03}", timestamp, millis);
 			format!(
