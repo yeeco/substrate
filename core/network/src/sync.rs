@@ -145,7 +145,7 @@ impl<B: BlockT> PendingJustifications<B> {
                 .entry(request)
                 .or_insert(Vec::new())
                 .push((peerId, Instant::now()));
-            self.pending_requests.push_back(request);
+            self.pending_requests.push_front(request);
         }
 
         if self.pending_requests.is_empty() {
@@ -1224,6 +1224,7 @@ impl<B: BlockT> ChainSync<B> {
     pub fn inspect(&self) {
         info!("ChainSync inspect: justification_pending_requests: {:?}", self.justifications.pending_requests);
         info!("ChainSync inspect: justification_peer_requests: {:?}",self.justifications.peer_requests);
+        info!("ChainSync inspect: justification_importing_requests: {:?}",self.justifications.importing_requests);
         info!("ChainSync inspect: justifications: {:?}", self.justifications.justifications);
         info!("ChainSync inspect: peers: {:?}", self.peers);
         info!("ChainSync inspect: best_seen_block: {:?}", self.best_seen_block());
