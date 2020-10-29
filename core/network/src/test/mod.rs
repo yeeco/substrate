@@ -857,6 +857,15 @@ impl JustificationImport<Block> for ForceFinalized {
 		self.0.finalize_block(BlockId::Hash(hash), Some(justification), None, true)
 			.map_err(|_| ConsensusErrorKind::InvalidJustification.into())
 	}
+
+	fn skip_justification(
+		&self,
+		hash: B::Hash,
+		number: NumberFor<B>,
+		signalers: Vec<(B::Hash, NumberFor<B>)>,
+	) -> Result<(), Self::Error> {
+		unreachable!()
+	}
 }
 
 pub struct JustificationTestNet(TestNet);

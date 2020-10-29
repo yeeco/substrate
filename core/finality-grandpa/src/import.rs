@@ -113,6 +113,15 @@ impl<B, E, Block: BlockT<Hash=H256>, RA, PRA> JustificationImport<Block>
 	) -> Result<(), Self::Error> {
 		self.import_justification(hash, number, justification, false)
 	}
+
+	fn skip_justification(
+		&self,
+		hash: Block::Hash,
+		number: NumberFor<Block>,
+		signalers: Vec<(Block::Hash, NumberFor<Block>)>,
+	) -> Result<(), Self::Error> {
+		unreachable!()
+	}
 }
 
 enum AppliedChanges<H, N> {

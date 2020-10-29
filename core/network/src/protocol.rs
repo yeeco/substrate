@@ -248,6 +248,8 @@ pub enum ProtocolMsg<B: BlockT, S: NetworkSpecialization<B>> {
 	RequestJustification(B::Hash, NumberFor<B>),
 	/// Inform protocol whether a justification was successfully imported.
 	JustificationImportResult(B::Hash, NumberFor<B>, bool),
+	/// Skip justification
+	SkipJustification(B::Hash, NumberFor<B>, (B::Hash, NumberFor<B>)),
 	/// Propagate a block to peers.
 	AnnounceBlock(B::Hash),
 	/// A block has been imported (sent by the client).
@@ -270,8 +272,6 @@ pub enum ProtocolMsg<B: BlockT, S: NetworkSpecialization<B>> {
 	Tick,
 	/// Hold sync
 	HoldSync,
-	/// Skip justification
-	SkipJustificationRequests(Vec<(B::Hash, NumberFor<B>)>),
 	/// Inspect
 	Inspect,
 	/// Synchronization request.
@@ -441,6 +441,9 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 					ProtocolContext::new(&mut self.context_data, &self.network_chan);
 				self.sync.justification_import_result(hash, number, success, &mut context);
 			},
+			ProtocolMsg::SkipJustification(hash, number, signaler) => {
+				self.sync.skip_justification(hash, number, signaler);
+			},
 			ProtocolMsg::PropagateExtrinsics => self.propagate_extrinsics(),
 			ProtocolMsg::Tick => self.tick(),
 			#[cfg(any(test, feature = "test-helpers"))]
@@ -453,9 +456,6 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 				let mut context =
 					ProtocolContext::new(&mut self.context_data, &self.network_chan);
 				self.sync.hold(&mut context, true);
-			},
-			ProtocolMsg::SkipJustificationRequests(justifications) => {
-				self.sync.skip_justification_requests(justifications);
 			},
 			ProtocolMsg::Inspect => {
 				self.inspect();

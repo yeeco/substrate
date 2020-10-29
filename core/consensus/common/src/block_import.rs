@@ -46,8 +46,8 @@ pub struct ImportedAux<H, N> {
 	pub needs_justification: bool,
 	/// Received a bad justification.
 	pub bad_justification: bool,
-	/// Skip justification
-	pub skip_justification_requests: Vec<(H, N)>
+	/// Skip justifications
+	pub skip_justifications: Vec<(H, N)>,
 }
 
 impl<H, N> Default for ImportedAux<H, N> {
@@ -56,7 +56,7 @@ impl<H, N> Default for ImportedAux<H, N> {
 			clear_justification_requests: false,
 			needs_justification: false,
 			bad_justification: false,
-			skip_justification_requests: Default::default(),
+			skip_justifications: Default::default(),
 		}
 	}
 }
@@ -208,5 +208,13 @@ pub trait JustificationImport<B: BlockT> {
 		hash: B::Hash,
 		number: NumberFor<B>,
 		justification: Justification,
+	) -> Result<(), Self::Error>;
+
+	/// Skip a Block justification and finalize the given block.
+	fn skip_justification(
+		&self,
+		hash: B::Hash,
+		number: NumberFor<B>,
+		signalers: Vec<(B::Hash, NumberFor<B>)>,
 	) -> Result<(), Self::Error>;
 }

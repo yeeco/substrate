@@ -35,6 +35,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use lru_cache::LruCache;
+use parity_codec::alloc::collections::BTreeMap;
 
 // Maximum blocks to request in a single packet.
 const MAX_BLOCKS_TO_REQUEST: usize = 128;
@@ -107,6 +108,7 @@ struct PendingJustifications<B: BlockT> {
     previous_requests: HashMap<PendingJustification<B>, Vec<(PeerId, Instant)>>,
     importing_requests: HashSet<PendingJustification<B>>,
     justifications_cache: LruCache<B::Hash, (PeerId, Justification)>,
+    pending_skip_justifications: BTreeMap<NumberFor<B>, Vec<PendingJustification<B>>>,
 }
 
 impl<B: BlockT> PendingJustifications<B> {
@@ -118,6 +120,7 @@ impl<B: BlockT> PendingJustifications<B> {
             previous_requests: HashMap::new(),
             importing_requests: HashSet::new(),
             justifications_cache: LruCache::new(MAX_JUSTIFICATION_TO_REQUEST as usize),
+            pending_skip_justifications: BTreeMap::new(),
         }
     }
 
@@ -159,6 +162,30 @@ impl<B: BlockT> PendingJustifications<B> {
             requests.retain(|(_, instant)| instant.elapsed() < JUSTIFICATION_RETRY_WAIT);
         }
 
+        // dispatch locally (skip or cached)
+        let mut unhandled_requests = VecDeque::new();
+        while let Some(request) = self.pending_requests.pop_front() {
+            // skip
+            if let Some(signalers) = self.pending_skip_justifications.get(&request.1){
+                // perform skip
+                trace!(target: "sync", "Skip justification for block #{}", request.0);
+                import_queue.skip_justification(request.0, request.1, signalers.clone());
+                self.importing_requests.insert(request);
+                continue;
+            }
+            // cached
+            if let Some((who, justification)) = self.justifications_cache.remove(&request.0){
+                trace!(target: "sync", "Requesting justification for block #{} from local cache", request.0);
+                import_queue.import_justification(who, request.0, request.1, justification);
+                self.importing_requests.insert(request);
+                continue;
+            }
+
+            unhandled_requests.push_back(request);
+        }
+        self.pending_requests.append(&mut unhandled_requests);
+
+        // dispatch remotely
         let mut available_peers = peers.iter().filter_map(|(peer, sync)| {
             // don't request to any peers that already have pending requests or are unavailable
             if sync.state != PeerSyncState::Available || self.peer_requests.contains_key(&peer) {
@@ -214,33 +241,23 @@ impl<B: BlockT> PendingJustifications<B> {
             let request = self.pending_requests.pop_front()
                 .expect("verified to be Some in the beginning of the loop; qed");
 
-            if let Some((who, justification)) = self.justifications_cache.remove(&request.0){
-                // can get from local cache
-                trace!(target: "sync", "Requesting justification for block #{} from local cache", request.0);
+            self.peer_requests.insert(peer.clone(), (request, Instant::now()));
 
-                import_queue.import_justification(who, request.0, request.1, justification);
-                self.importing_requests.insert(request);
+            peers.get_mut(&peer)
+                .expect("peer was is taken from available_peers; available_peers is a subset of peers; qed")
+                .state = PeerSyncState::DownloadingJustification(request.0);
 
-            } else{
-                // need request from remote peer
-                self.peer_requests.insert(peer.clone(), (request, Instant::now()));
+            trace!(target: "sync", "Requesting justification for block #{} from {}", request.0, peer);
+            let request = message::generic::BlockRequest {
+                id: 0,
+                fields: message::BlockAttributes::JUSTIFICATION,
+                from: message::FromBlock::Hash(request.0),
+                to: None,
+                direction: message::Direction::Ascending,
+                max: Some(MAX_JUSTIFICATION_TO_REQUEST),
+            };
 
-                peers.get_mut(&peer)
-                    .expect("peer was is taken from available_peers; available_peers is a subset of peers; qed")
-                    .state = PeerSyncState::DownloadingJustification(request.0);
-
-                trace!(target: "sync", "Requesting justification for block #{} from {}", request.0, peer);
-                let request = message::generic::BlockRequest {
-                    id: 0,
-                    fields: message::BlockAttributes::JUSTIFICATION,
-                    from: message::FromBlock::Hash(request.0),
-                    to: None,
-                    direction: message::Direction::Ascending,
-                    max: Some(MAX_JUSTIFICATION_TO_REQUEST),
-                };
-
-                protocol.send_block_request(peer, request);
-            }
+            protocol.send_block_request(peer, request);
         }
 
         self.pending_requests.append(&mut unhandled_requests);
@@ -276,6 +293,15 @@ impl<B: BlockT> PendingJustifications<B> {
         };
     }
 
+    fn pending_skip_justification(&mut self, hash: B::Hash, number: NumberFor<B>, signaler: (B::Hash, NumberFor<B>)) {
+
+        trace!(target: "sync", "Pending skip justification: hash: {} number: {} signaler: {:?}", hash, number, signaler);
+
+        self.pending_skip_justifications
+            .entry(number)
+            .or_insert(Vec::new()).push(signaler);
+    }
+
     /// Retry any pending request if a peer disconnected.
     fn peer_disconnected(&mut self, who: PeerId) {
         if let Some(request) = self.peer_requests.remove(&who) {
@@ -308,6 +334,11 @@ impl<B: BlockT> PendingJustifications<B> {
                 return;
             };
 
+            let skip_numbers = self.pending_skip_justifications.range(..=number).map(|(k, _v)| k.clone()).collect::<Vec<_>>();
+            for number in skip_numbers {
+                self.pending_skip_justifications.remove(&number);
+            }
+
             self.previous_requests.clear();
             self.peer_requests.clear();
             self.pending_requests =
@@ -316,19 +347,6 @@ impl<B: BlockT> PendingJustifications<B> {
             return;
         }
         self.pending_requests.push_front(request);
-    }
-
-    fn skip_justification_requests(&mut self, justifications: Vec<(B::Hash, NumberFor<B>)>) {
-
-        for (hash, _number) in justifications {
-            self.justifications.finalize_root(&hash);
-        }
-
-        self.previous_requests.clear();
-        self.peer_requests.clear();
-        self.pending_requests =
-            self.justifications.roots().map(|(h, n, _)| (h.clone(), n.clone())).collect();
-
     }
 
     /// Processes the response for the request previously sent to the given
@@ -899,8 +917,8 @@ impl<B: BlockT> ChainSync<B> {
         self.justifications.dispatch(&mut self.peers, protocol, &*self.import_queue);
     }
 
-    pub fn skip_justification_requests(&mut self, justifications: Vec<(B::Hash, NumberFor<B>)>) {
-        self.justifications.skip_justification_requests(justifications);
+    pub fn skip_justification(&mut self, hash: B::Hash, number: NumberFor<B>, signaler: (B::Hash, NumberFor<B>)) {
+        self.justifications.pending_skip_justification(hash, number, signaler);
     }
 
     pub fn stop(&self) {
@@ -1222,15 +1240,17 @@ impl<B: BlockT> ChainSync<B> {
     }
 
     pub fn inspect(&self) {
-        info!("ChainSync inspect: justification_pending_requests: {:?}", self.justifications.pending_requests);
-        info!("ChainSync inspect: justification_peer_requests: {:?}",self.justifications.peer_requests);
-        info!("ChainSync inspect: justification_importing_requests: {:?}",self.justifications.importing_requests);
-        info!("ChainSync inspect: justifications: {:?}", self.justifications.justifications);
-        info!("ChainSync inspect: peers: {:?}", self.peers);
-        info!("ChainSync inspect: best_seen_block: {:?}", self.best_seen_block());
-        info!("ChainSync inspect: best_importing_number: {}", self.best_importing_number);
-        info!("ChainSync inspect: best_queued_number: {}", self.best_queued_number);
-        info!("ChainSync inspect: best_queued_hash: {}", self.best_queued_hash);
+        info!(target: "sync", "ChainSync inspect: justification_pending_requests: {:?}", self.justifications.pending_requests);
+        info!(target: "sync", "ChainSync inspect: justification_peer_requests: {:?}",self.justifications.peer_requests);
+        info!(target: "sync", "ChainSync inspect: justification_importing_requests: {:?}",self.justifications.importing_requests);
+        info!(target: "sync", "ChainSync inspect: justification_previous_requests: {:?}",self.justifications.previous_requests);
+        info!(target: "sync", "ChainSync inspect: justifications: {:?}", self.justifications.justifications);
+        info!(target: "sync", "ChainSync inspect: justification_pending_skip_justifications: {:?}",self.justifications.pending_skip_justifications);
+        info!(target: "sync", "ChainSync inspect: peers: {:?}", self.peers);
+        info!(target: "sync", "ChainSync inspect: best_seen_block: {:?}", self.best_seen_block());
+        info!(target: "sync", "ChainSync inspect: best_importing_number: {}", self.best_importing_number);
+        info!(target: "sync", "ChainSync inspect: best_queued_number: {}", self.best_queued_number);
+        info!(target: "sync", "ChainSync inspect: best_queued_hash: {}", self.best_queued_hash);
     }
 }
 

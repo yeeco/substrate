@@ -99,6 +99,8 @@ pub trait ImportQueue<B: BlockT>: Send + Sync + ImportQueueClone<B> {
 	fn import_blocks(&self, origin: BlockOrigin, blocks: Vec<IncomingBlock<B>>);
 	/// Import a block justification.
 	fn import_justification(&self, who: Origin, hash: B::Hash, number: NumberFor<B>, justification: Justification);
+	/// Skip a block justification.
+	fn skip_justification(&self, hash: B::Hash, number: NumberFor<B>, signalers: Vec<(B::Hash, NumberFor<B>)>);
 }
 
 pub trait ImportQueueClone<B: BlockT> {
@@ -202,11 +204,19 @@ impl<B: BlockT> ImportQueue<B> for BasicQueue<B> {
 			.send(BlockImportMsg::ImportJustification(who.clone(), hash, number, justification))
 			.expect("1. self is holding a sender to the Importer, 2. Importer should handle messages while there are senders around; qed");
 	}
+
+	fn skip_justification(&self, hash: B::Hash, number: NumberFor<B>, signalers: Vec<(B::Hash, NumberFor<B>)>) {
+		let _ = self
+			.sender
+			.send(BlockImportMsg::SkipJustification(hash, number, signalers))
+			.expect("1. self is holding a sender to the Importer, 2. Importer should handle messages while there are senders around; qed");
+	}
 }
 
 pub enum BlockImportMsg<B: BlockT> {
 	ImportBlocks(BlockOrigin, Vec<IncomingBlock<B>>),
 	ImportJustification(Origin, B::Hash, NumberFor<B>, Justification),
+	SkipJustification(B::Hash, NumberFor<B>, Vec<(B::Hash, NumberFor<B>)>),
 	Start(Box<Link<B>>, Sender<Result<(), std::io::Error>>),
 	Stop,
 	#[cfg(any(test, feature = "test-helpers"))]
@@ -295,6 +305,9 @@ impl<B: BlockT> BlockImporter<B> {
 			BlockImportMsg::ImportJustification(who, hash, number, justification) => {
 				self.handle_import_justification(who, hash, number, justification)
 			},
+			BlockImportMsg::SkipJustification(hash, number, signalers) => {
+				self.handle_skip_justification( hash, number, signalers)
+			},
 			BlockImportMsg::Start(link, sender) => {
 				if let Some(justification_import) = self.justification_import.as_ref() {
 					justification_import.on_start(&*link);
@@ -365,9 +378,10 @@ impl<B: BlockT> BlockImporter<B> {
 						}
 					}
 
-					if aux.skip_justification_requests.len() > 0 {
-						trace!(target: "sync", "Block imported skip pending justification requests: {:?}", aux.skip_justification_requests);
-						link.skip_justification_requests(aux.skip_justification_requests);
+					for (skip_hash, skip_number) in aux.skip_justifications {
+						let signaler = (hash, number);
+						trace!(target: "sync", "Block imported skip justification: {}: {:?} signaler: {:?}", skip_number, skip_hash, signaler);
+						link.skip_justification(skip_hash, skip_number, signaler);
 					}
 				},
 				Err(BlockImportError::IncompleteHeader(who)) => {
@@ -418,6 +432,20 @@ impl<B: BlockT> BlockImporter<B> {
 		self.worker_sender
 			.send(BlockImportWorkerMsg::ImportBlocks(origin, blocks))
 			.expect("1. This is holding a sender to the worker, 2. the worker should not quit while a sender is still held; qed");
+	}
+
+	fn handle_skip_justification(&self, hash: B::Hash, number: NumberFor<B>, signalers: Vec<(B::Hash, NumberFor<B>)>) {
+		let success = self.justification_import.as_ref().map(|justification_import| {
+			justification_import.skip_justification(hash, number, signalers)
+				.map_err(|e| {
+					debug!(target: "sync", "Justification skip failed with {:?} for hash: {:?} number: {:?}", e, hash, number);
+					e
+				}).is_ok()
+		}).unwrap_or(false);
+
+		if let Some(link) = self.link.as_ref() {
+			link.justification_skipped(&hash, number, success);
+		}
 	}
 }
 
@@ -523,6 +551,10 @@ pub trait Link<B: BlockT>: Send {
 	fn clear_justification_requests(&self) {}
 	/// Request a justification for the given block.
 	fn request_justification(&self, _hash: &B::Hash, _number: NumberFor<B>) {}
+	/// Skip justification
+	fn skip_justification(&self, _hash: B::Hash, _number: NumberFor<B>, _signaler: (B::Hash, NumberFor<B>)) {}
+	/// Justification skip result.
+	fn justification_skipped(&self, _hash: &B::Hash, _number: NumberFor<B>, _success: bool) {}
 	/// Disconnect from peer.
 	fn useless_peer(&self, _who: Origin, _reason: &str) {}
 	/// Disconnect from peer and restart sync.
@@ -531,8 +563,6 @@ pub trait Link<B: BlockT>: Send {
 	fn restart(&self) {}
 	/// Hold sync.
 	fn hold(&self) {}
-	/// Skip justifications
-	fn skip_justification_requests(&self, _justifications: Vec<(B::Hash, NumberFor<B>)>) {}
 	/// Synchronization request has been processed.
 	#[cfg(any(test, feature = "test-helpers"))]
 	fn synchronized(&self) {}

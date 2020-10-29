@@ -757,7 +757,7 @@ fn init_logger(pattern: &str) -> Result<(), SetLoggerError> {
 
 		let mut output = if log::max_level() <= log::LevelFilter::Info {
 			format!(
-				"{} {} {} {} {}",
+				"{} {} {} {}  {}",
 				Colour::Black.bold().paint(timestamp),
 				name,
 				record.level(),
