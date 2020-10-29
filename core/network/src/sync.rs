@@ -931,7 +931,9 @@ impl<B: BlockT> ChainSync<B> {
     pub fn justification_import_result(&mut self, hash: B::Hash, number: NumberFor<B>, success: bool, protocol: &mut Context<B>) {
         self.justifications.justification_import_result(hash, number, success);
 
-        self.justifications.dispatch(&mut self.peers, protocol, &*self.import_queue);
+        if success {
+            self.justifications.dispatch(&mut self.peers, protocol, &*self.import_queue);
+        }
     }
 
     pub fn skip_justification(&mut self, hash: B::Hash, number: NumberFor<B>, signaler: (B::Hash, NumberFor<B>)) {
