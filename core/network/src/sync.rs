@@ -335,8 +335,8 @@ impl<B: BlockT> PendingJustifications<B> {
             };
 
             let skip_numbers = self.pending_skip_justifications.range(..=number).map(|(k, _v)| k.clone()).collect::<Vec<_>>();
-            for number in skip_numbers {
-                self.pending_skip_justifications.remove(&number);
+            for skip_number in skip_numbers {
+                self.pending_skip_justifications.remove(&skip_number);
             }
 
             self.previous_requests.clear();
@@ -347,6 +347,23 @@ impl<B: BlockT> PendingJustifications<B> {
             return;
         }
         self.pending_requests.push_front(request);
+    }
+
+    fn fork(&mut self, blocks: Vec<(B::Hash, NumberFor<B>)>) {
+        for (hash, number) in blocks {
+            self.justifications.finalize_root(&hash);
+
+            let skip_numbers = self.pending_skip_justifications.range(..=number).map(|(k, _v)| k.clone()).collect::<Vec<_>>();
+            for skip_number in skip_numbers {
+                self.pending_skip_justifications.remove(&skip_number);
+            }
+        }
+
+        self.previous_requests.clear();
+        self.peer_requests.clear();
+        self.pending_requests =
+            self.justifications.roots().map(|(h, n, _)| (h.clone(), n.clone())).collect();
+
     }
 
     /// Processes the response for the request previously sent to the given
@@ -925,9 +942,7 @@ impl<B: BlockT> ChainSync<B> {
 
     pub fn fork(&mut self, blocks: Vec<(B::Hash, NumberFor<B>)>) {
         trace!(target: "sync", "Fork: blocks: {:?}", blocks);
-        for (hash, number) in blocks {
-            self.justifications.justification_import_result(hash, number, true);
-        }
+        self.justifications.fork(blocks);
     }
 
     pub fn stop(&self) {
