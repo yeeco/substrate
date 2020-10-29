@@ -46,8 +46,10 @@ pub struct ImportedAux<H, N> {
 	pub needs_justification: bool,
 	/// Received a bad justification.
 	pub bad_justification: bool,
-	/// Skip justifications
-	pub skip_justifications: Vec<(H, N)>,
+	/// Skip justification
+	pub skip_justification: Option<(H, N)>,
+	/// Fork
+	pub fork: Option<Vec<(H, N)>>,
 }
 
 impl<H, N> Default for ImportedAux<H, N> {
@@ -56,7 +58,8 @@ impl<H, N> Default for ImportedAux<H, N> {
 			clear_justification_requests: false,
 			needs_justification: false,
 			bad_justification: false,
-			skip_justifications: Default::default(),
+			skip_justification: None,
+			fork: None,
 		}
 	}
 }

@@ -918,7 +918,16 @@ impl<B: BlockT> ChainSync<B> {
     }
 
     pub fn skip_justification(&mut self, hash: B::Hash, number: NumberFor<B>, signaler: (B::Hash, NumberFor<B>)) {
+        trace!(target: "sync", "Skip justification: number: {}, hash: {}", number, hash);
         self.justifications.pending_skip_justification(hash, number, signaler);
+
+    }
+
+    pub fn fork(&mut self, blocks: Vec<(B::Hash, NumberFor<B>)>) {
+        trace!(target: "sync", "Fork: blocks: {:?}", blocks);
+        for (hash, number) in blocks {
+            self.justifications.justification_import_result(hash, number, true);
+        }
     }
 
     pub fn stop(&self) {

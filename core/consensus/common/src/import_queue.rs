@@ -378,11 +378,17 @@ impl<B: BlockT> BlockImporter<B> {
 						}
 					}
 
-					for (skip_hash, skip_number) in aux.skip_justifications {
+					if let Some((skip_hash, skip_number)) = aux.skip_justification {
 						let signaler = (hash, number);
 						trace!(target: "sync", "Block imported skip justification: {}: {:?} signaler: {:?}", skip_number, skip_hash, signaler);
 						link.skip_justification(skip_hash, skip_number, signaler);
 					}
+
+					if let Some(fork_blocks) = aux.fork {
+						trace!(target: "sync", "Block imported fork : {:?}", fork_blocks);
+						link.fork(fork_blocks);
+					}
+
 				},
 				Err(BlockImportError::IncompleteHeader(who)) => {
 					if let Some(peer) = who {
@@ -553,6 +559,8 @@ pub trait Link<B: BlockT>: Send {
 	fn request_justification(&self, _hash: &B::Hash, _number: NumberFor<B>) {}
 	/// Skip justification
 	fn skip_justification(&self, _hash: B::Hash, _number: NumberFor<B>, _signaler: (B::Hash, NumberFor<B>)) {}
+	/// Fork
+	fn fork(&self, _blocks: Vec<(B::Hash, NumberFor<B>)>) {}
 	/// Justification skip result.
 	fn justification_skipped(&self, _hash: &B::Hash, _number: NumberFor<B>, _success: bool) {}
 	/// Disconnect from peer.

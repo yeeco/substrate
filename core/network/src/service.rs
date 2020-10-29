@@ -122,6 +122,10 @@ impl<B: BlockT, S: NetworkSpecialization<B>> Link<B> for NetworkLink<B, S> {
 		let _ = self.protocol_sender.send(ProtocolMsg::SkipJustification(hash, number, signaler));
 	}
 
+	fn fork(&self, blocks: Vec<(B::Hash, NumberFor<B>)>) {
+		let _ = self.protocol_sender.send(ProtocolMsg::Fork(blocks));
+	}
+
 	fn useless_peer(&self, who: PeerId, reason: &str) {
 		trace!(target:"sync", "Useless peer {}, {}", who, reason);
 		self.network_sender.send(NetworkMsg::ReportPeer(who, Severity::Useless(reason.to_string())));

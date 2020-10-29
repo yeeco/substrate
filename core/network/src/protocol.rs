@@ -250,6 +250,8 @@ pub enum ProtocolMsg<B: BlockT, S: NetworkSpecialization<B>> {
 	JustificationImportResult(B::Hash, NumberFor<B>, bool),
 	/// Skip justification
 	SkipJustification(B::Hash, NumberFor<B>, (B::Hash, NumberFor<B>)),
+	/// Fork
+	Fork(Vec<(B::Hash, NumberFor<B>)>),
 	/// Propagate a block to peers.
 	AnnounceBlock(B::Hash),
 	/// A block has been imported (sent by the client).
@@ -443,6 +445,9 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 			},
 			ProtocolMsg::SkipJustification(hash, number, signaler) => {
 				self.sync.skip_justification(hash, number, signaler);
+			},
+			ProtocolMsg::Fork(blocks) => {
+				self.sync.fork(blocks);
 			},
 			ProtocolMsg::PropagateExtrinsics => self.propagate_extrinsics(),
 			ProtocolMsg::Tick => self.tick(),
