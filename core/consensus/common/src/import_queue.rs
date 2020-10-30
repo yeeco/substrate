@@ -227,8 +227,8 @@ impl<B: BlockT> BlockBuilder<B> for BasicQueue<B> {
 			 cache: HashMap<well_known_cache_keys::Id, Vec<u8>>,
 	) -> Result<ImportResult<B::Hash, NumberFor<B>>, ConsensusError> {
 
-		let hash = block.header.hash().clone();
-		let number = block.header.number().clone();
+		let hash = block.post_header().hash().clone();
+		let number = block.post_header().number().clone();
 
 		let import_result = self.block_import.import_block(block, cache);
 		match &import_result {
