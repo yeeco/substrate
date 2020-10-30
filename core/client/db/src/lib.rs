@@ -1073,7 +1073,7 @@ fn lookup_key_by_hash(db: Arc<KeyValueDB>, hash: Vec<u8>) -> Result<Option<Vec<u
 	res.map(|v| v.map(|v| v.into_vec())).map_err(db_err)
 }
 
-fn apply_block_data_commit(transaction: &mut DBTransaction, db: Arc<KeyValueDB>, commit: &state_db::CommitSet<Vec<u8>>) {
+fn apply_block_data_commit(transaction: &mut DBTransaction, db: Arc<KeyValueDB>, commit: state_db::CommitSet<Vec<u8>>) {
 	for key in commit.data.deleted.into_iter() {
 		match lookup_key_by_hash(db.clone(), key) {
 			Ok(Some(key)) => {
@@ -1206,7 +1206,7 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 			match self.storage.state_db.revert_one() {
 				Some(commit) => {
 					apply_state_commit(&mut transaction, commit.clone());
-					apply_block_data_commit(&mut transaction, self.storage.db.clone(), &commit);
+					apply_block_data_commit(&mut transaction, self.storage.db.clone(), commit);
 					let removed = self.blockchain.header(BlockId::Number(best))?.ok_or_else(
 						|| client::error::ErrorKind::UnknownBlock(
 							format!("Error reverting to {}. Block hash not found.", best)))?;
