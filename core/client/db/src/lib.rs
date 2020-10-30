@@ -1068,6 +1068,26 @@ fn apply_state_commit(transaction: &mut DBTransaction, commit: state_db::CommitS
 	}
 }
 
+fn lookup_key_by_hash(db: Arc<KeyValueDB>, hash: Vec<u8>) -> Result<Option<Vec<u8>>, client::error::Error> {
+	let res = db.get(columns::KEY_LOOKUP, hash.as_ref());
+	res.map(|v| v.map(|v| v.into_vec())).map_err(db_err)
+}
+
+fn apply_block_data_commit(transaction: &mut DBTransaction, db: Arc<KeyValueDB>, commit: state_db::CommitSet<Vec<u8>>) {
+	for key in commit.data.deleted.into_iter() {
+		match lookup_key_by_hash(db.clone(), key) {
+			Ok(Some(key)) => {
+				transaction.delete(columns::HEADER, key.as_ref());
+				transaction.delete(columns::BODY, key.as_ref());
+				transaction.delete(columns::JUSTIFICATION, key.as_ref());
+				transaction.delete(columns::PROOF, key.as_ref());
+				transaction.delete(columns::KEY_LOOKUP, key.as_ref());
+			},
+			_ => {}
+		}
+	}
+}
+
 impl<Block> client::backend::AuxStore for Backend<Block> where Block: BlockT<Hash=H256> {
 	fn insert_aux<
 		'a,
@@ -1185,7 +1205,8 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 			let mut transaction = DBTransaction::new();
 			match self.storage.state_db.revert_one() {
 				Some(commit) => {
-					apply_state_commit(&mut transaction, commit);
+					apply_state_commit(&mut transaction, commit.clone());
+					apply_block_data_commit(&mut transaction, self.storage.db.clone(), commit);
 					let removed = self.blockchain.header(BlockId::Number(best))?.ok_or_else(
 						|| client::error::ErrorKind::UnknownBlock(
 							format!("Error reverting to {}. Block hash not found.", best)))?;
