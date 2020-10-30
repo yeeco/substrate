@@ -38,7 +38,7 @@ pub enum ImportResult<H, N> {
 }
 
 /// Auxiliary data associated with an imported block result.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ImportedAux<H, N> {
 	/// Clear all pending justification requests.
 	pub clear_justification_requests: bool,

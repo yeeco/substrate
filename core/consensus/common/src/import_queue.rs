@@ -42,6 +42,7 @@ use runtime_primitives::{Justification, Proof};
 
 use crate::error::Error as ConsensusError;
 use parity_codec::alloc::collections::hash_map::HashMap;
+use crate::well_known_cache_keys;
 
 /// Shared block import struct used by the queue.
 pub type SharedBlockImport<B> = Arc<dyn BlockImport<B, Error = ConsensusError> + Send + Sync>;
@@ -113,11 +114,18 @@ impl<B: BlockT> Clone for Box<ImportQueue<B>> {
 	}
 }
 
+pub trait BlockBuilder<B: BlockT> {
+	fn build(&self, block: ImportBlock<B>,
+			 cache: HashMap<well_known_cache_keys::Id, Vec<u8>>,
+	) -> Result<ImportResult<B::Hash, NumberFor<B>>, ConsensusError>;
+}
+
 /// Interface to a basic block import queue that is importing blocks sequentially in a separate thread,
 /// with pluggable verification.
 #[derive(Clone)]
 pub struct BasicQueue<B: BlockT> {
 	sender: Sender<BlockImportMsg<B>>,
+	block_import: SharedBlockImport<B>,
 }
 
 impl<B: BlockT> ImportQueueClone<B> for BasicQueue<B> {
@@ -150,11 +158,12 @@ impl<B: BlockT> BasicQueue<B> {
 		network_id: Option<u32>,
 	) -> Self {
 		let (result_sender, result_port) = channel::unbounded();
-		let worker_sender = BlockImportWorker::new(result_sender, verifier, block_import, network_id);
+		let worker_sender = BlockImportWorker::new(result_sender, verifier, block_import.clone(), network_id);
 		let importer_sender = BlockImporter::new(result_port, worker_sender, justification_import, network_id);
 
 		Self {
 			sender: importer_sender,
+			block_import,
 		}
 	}
 
@@ -213,9 +222,32 @@ impl<B: BlockT> ImportQueue<B> for BasicQueue<B> {
 	}
 }
 
+impl<B: BlockT> BlockBuilder<B> for BasicQueue<B> {
+	fn build(&self, block: ImportBlock<B>,
+			 cache: HashMap<well_known_cache_keys::Id, Vec<u8>>,
+	) -> Result<ImportResult<B::Hash, NumberFor<B>>, ConsensusError> {
+
+		let hash = block.header.hash().clone();
+		let number = block.header.number().clone();
+
+		let import_result = self.block_import.import_block(block, cache);
+		match &import_result {
+			Ok(ImportResult::Imported(aux)) => {
+				let _ = self
+					.sender
+					.send(BlockImportMsg::Built(hash, number, aux.clone()))
+					.expect("1. self is holding a sender to the Importer, 2. Importer should handle messages while there are senders around; qed");
+			},
+			_ => (),
+		}
+		import_result
+	}
+}
+
 pub enum BlockImportMsg<B: BlockT> {
 	ImportBlocks(BlockOrigin, Vec<IncomingBlock<B>>),
 	ImportJustification(Origin, B::Hash, NumberFor<B>, Justification),
+	Built(B::Hash, NumberFor<B>, ImportedAux<B::Hash, NumberFor<B>>),
 	SkipJustification(B::Hash, NumberFor<B>, Vec<(B::Hash, NumberFor<B>)>),
 	Start(Box<Link<B>>, Sender<Result<(), std::io::Error>>),
 	Stop,
@@ -304,6 +336,9 @@ impl<B: BlockT> BlockImporter<B> {
 			},
 			BlockImportMsg::ImportJustification(who, hash, number, justification) => {
 				self.handle_import_justification(who, hash, number, justification)
+			},
+			BlockImportMsg::Built(hash, number, aux) => {
+				self.handle_built(hash, number, aux)
 			},
 			BlockImportMsg::SkipJustification(hash, number, signalers) => {
 				self.handle_skip_justification( hash, number, signalers)
@@ -430,6 +465,28 @@ impl<B: BlockT> BlockImporter<B> {
 
 		if let Some(link) = self.link.as_ref() {
 			link.justification_imported(who, &hash, number, success);
+		}
+	}
+
+	fn handle_built(&self, hash: B::Hash, number: NumberFor<B>, aux: ImportedAux<B::Hash, NumberFor<B>>) {
+
+		if let Some(link) = self.link.as_ref() {
+
+			if aux.needs_justification {
+				trace!(target: "sync", "Block built but requires justification {}: {:?}", number, hash);
+				link.request_justification(&hash, number);
+			}
+
+			if let Some((skip_hash, skip_number)) = aux.skip_justification {
+				let signaler = (hash, number);
+				trace!(target: "sync", "Block built skip justification: {}: {:?} signaler: {:?}", skip_number, skip_hash, signaler);
+				link.skip_justification(skip_hash, skip_number, signaler);
+			}
+
+			if let Some(fork_blocks) = aux.fork {
+				trace!(target: "sync", "Block built fork : {:?}", fork_blocks);
+				link.fork(fork_blocks);
+			}
 		}
 	}
 
