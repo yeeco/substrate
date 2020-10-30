@@ -114,7 +114,7 @@ impl<B: BlockT> Clone for Box<ImportQueue<B>> {
 	}
 }
 
-pub trait BlockBuilder<B: BlockT> {
+pub trait BlockBuilder<B: BlockT>: Send + Sync {
 	fn build(&self, block: ImportBlock<B>,
 			 cache: HashMap<well_known_cache_keys::Id, Vec<u8>>,
 	) -> Result<ImportResult<B::Hash, NumberFor<B>>, ConsensusError>;
