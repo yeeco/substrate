@@ -815,7 +815,7 @@ impl<Block: BlockT<Hash=H256>> Backend<Block> {
 			trace!(target: "db", "Canonicalize block #{} ({:?})", new_canonical, hash);
 			let commit = self.storage.state_db.canonicalize_block(&hash)
 				.map_err(|e: state_db::Error<io::Error>| client::error::Error::from(format!("State database error: {:?}", e)))?;
-			apply_state_commit(transaction, commit);
+			apply_state_commit(transaction, &commit);
 		};
 
 		Ok(())
@@ -1035,7 +1035,7 @@ impl<Block: BlockT<Hash=H256>> Backend<Block> {
 
 			let commit = self.storage.state_db.canonicalize_block(&f_hash)
 				.map_err(|e: state_db::Error<io::Error>| client::error::Error::from(format!("State database error: {:?}", e)))?;
-			apply_state_commit(transaction, commit);
+			apply_state_commit(transaction, &commit);
 
 			let changes_trie_config = self.changes_trie_config(parent_hash)?;
 			if let Some(changes_trie_config) = changes_trie_config {
