@@ -815,7 +815,7 @@ impl<Block: BlockT<Hash=H256>> Backend<Block> {
 			trace!(target: "db", "Canonicalize block #{} ({:?})", new_canonical, hash);
 			let commit = self.storage.state_db.canonicalize_block(&hash)
 				.map_err(|e: state_db::Error<io::Error>| client::error::Error::from(format!("State database error: {:?}", e)))?;
-			apply_state_commit(transaction, &commit);
+			apply_state_commit(transaction, commit);
 		};
 
 		Ok(())
@@ -898,7 +898,7 @@ impl<Block: BlockT<Hash=H256>> Backend<Block> {
 			let number_u64 = number.as_();
 			let commit = self.storage.state_db.insert_block(&hash, number_u64, &pending_block.header.parent_hash(), changeset)
 				.map_err(|e: state_db::Error<io::Error>| client::error::Error::from(format!("State database error: {:?}", e)))?;
-			apply_state_commit(&mut transaction, &commit);
+			apply_state_commit(&mut transaction, commit);
 
 			// Check if need to finalize. Genesis is always finalized instantly.
 			let finalized = number_u64 == 0 || pending_block.leaf_state.is_final();
@@ -1035,7 +1035,7 @@ impl<Block: BlockT<Hash=H256>> Backend<Block> {
 
 			let commit = self.storage.state_db.canonicalize_block(&f_hash)
 				.map_err(|e: state_db::Error<io::Error>| client::error::Error::from(format!("State database error: {:?}", e)))?;
-			apply_state_commit(transaction, &commit);
+			apply_state_commit(transaction, commit);
 
 			let changes_trie_config = self.changes_trie_config(parent_hash)?;
 			if let Some(changes_trie_config) = changes_trie_config {
@@ -1053,7 +1053,7 @@ impl<Block: BlockT<Hash=H256>> Backend<Block> {
 	}
 }
 
-fn apply_state_commit(transaction: &mut DBTransaction, commit: &state_db::CommitSet<Vec<u8>>) {
+fn apply_state_commit(transaction: &mut DBTransaction, commit: state_db::CommitSet<Vec<u8>>) {
 	for (key, val) in commit.data.inserted.into_iter() {
 		transaction.put(columns::STATE, &key[..], &val);
 	}
@@ -1205,7 +1205,7 @@ impl<Block> client::backend::Backend<Block, Blake2Hasher> for Backend<Block> whe
 			let mut transaction = DBTransaction::new();
 			match self.storage.state_db.revert_one() {
 				Some(commit) => {
-					apply_state_commit(&mut transaction, &commit);
+					apply_state_commit(&mut transaction, commit.clone());
 					apply_block_data_commit(&mut transaction, self.storage.db.clone(), &commit);
 					let removed = self.blockchain.header(BlockId::Number(best))?.ok_or_else(
 						|| client::error::ErrorKind::UnknownBlock(
