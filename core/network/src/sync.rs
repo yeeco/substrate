@@ -19,7 +19,7 @@ use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 use log::{debug, trace, warn, info};
 use crate::protocol::Context;
-use fork_tree::ForkTree;
+use fork_tree::{ForkTree, FinalizationResult};
 use network_libp2p::{Severity, PeerId};
 use client::{BlockStatus, ClientInfo};
 use consensus::BlockOrigin;
@@ -421,13 +421,26 @@ impl<B: BlockT> PendingJustifications<B> {
             return Ok(());
         }
 
-        self.justifications.finalize(best_finalized_hash, best_finalized_number, &is_descendent_of)?;
+        let result = self.justifications.finalize(best_finalized_hash, best_finalized_number, &is_descendent_of)?;
 
         let roots = self.justifications.roots().collect::<HashSet<_>>();
 
         self.pending_requests.retain(|(h, n)| roots.contains(&(h, n, &())));
         self.peer_requests.retain(|_, ((h, n), _)| roots.contains(&(h, n, &())));
         self.previous_requests.retain(|(h, n), _| roots.contains(&(h, n, &())));
+
+        if let FinalizationResult::Changed(Some(v)) = result {
+
+            debug!(target: "sync", "Block finalized, justifications changed: number: {}, hash: {}", best_finalized_number, best_finalized_hash);
+
+            let skip_numbers = self.pending_skip_justifications.range(..=best_finalized_number).map(|(k, _v)| k.clone()).collect::<Vec<_>>();
+            for skip_number in skip_numbers {
+                self.pending_skip_justifications.remove(&skip_number);
+            }
+
+            self.pending_requests =
+                self.justifications.roots().map(|(h, n, _)| (h.clone(), n.clone())).collect();
+        }
 
         Ok(())
     }
