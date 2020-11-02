@@ -28,6 +28,7 @@ use client::runtime_api::ApiExt;
 use consensus_common::{
 	BlockImport, Error as ConsensusError, ErrorKind as ConsensusErrorKind,
 	ImportBlock, ImportResult, JustificationImport, well_known_cache_keys,
+	SkipResult,
 };
 use fg_primitives::GrandpaApi;
 use runtime_primitives::Justification;
@@ -119,7 +120,7 @@ impl<B, E, Block: BlockT<Hash=H256>, RA, PRA> JustificationImport<Block>
 		hash: Block::Hash,
 		number: NumberFor<Block>,
 		signalers: Vec<(Block::Hash, NumberFor<Block>)>,
-	) -> Result<(), Self::Error> {
+	) -> Result<SkipResult, Self::Error> {
 		unreachable!()
 	}
 }

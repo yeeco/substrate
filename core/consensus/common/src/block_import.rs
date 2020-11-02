@@ -20,7 +20,7 @@ use runtime_primitives::traits::{Block as BlockT, DigestItemFor, Header as Heade
 use runtime_primitives::{Justification, Proof};
 use std::borrow::Cow;
 use std::collections::HashMap;
-use crate::well_known_cache_keys;
+use crate::{well_known_cache_keys, SkipResult};
 
 /// Block import result.
 #[derive(Debug, PartialEq, Eq)]
@@ -219,5 +219,5 @@ pub trait JustificationImport<B: BlockT> {
 		hash: B::Hash,
 		number: NumberFor<B>,
 		signalers: Vec<(B::Hash, NumberFor<B>)>,
-	) -> Result<(), Self::Error>;
+	) -> Result<SkipResult, Self::Error>;
 }

@@ -26,6 +26,7 @@ use network_libp2p::{start_service, parse_str_addr, Service as NetworkService, S
 use network_libp2p::{RegisteredProtocol, NetworkState};
 use peerset::PeersetHandle;
 use consensus::import_queue::{ImportQueue, Link};
+use consensus::SkipResult;
 use crate::consensus_gossip::ConsensusGossip;
 use crate::message::Message;
 use crate::protocol::{self, Context, FromNetworkMsg, Protocol, ConnectedPeer, ProtocolMsg, ProtocolStatus, PeerInfo};
@@ -106,8 +107,8 @@ impl<B: BlockT, S: NetworkSpecialization<B>> Link<B> for NetworkLink<B, S> {
 		}
 	}
 
-	fn justification_skipped(&self, hash: &B::Hash, number: NumberFor<B>, success: bool) {
-		let _ = self.protocol_sender.send(ProtocolMsg::JustificationImportResult(hash.clone(), number, success));
+	fn justification_skipped(&self, hash: &B::Hash, number: NumberFor<B>, result: SkipResult) {
+		let _ = self.protocol_sender.send(ProtocolMsg::JustificationSkipResult(hash.clone(), number, result));
 	}
 
 	fn clear_justification_requests(&self) {

@@ -21,7 +21,8 @@ use network_libp2p::{PeerId, Severity};
 use primitives::storage::StorageKey;
 use runtime_primitives::{generic::BlockId, ConsensusEngineId};
 use runtime_primitives::traits::{As, Block as BlockT, Header as HeaderT, NumberFor, Zero};
-use consensus::import_queue::ImportQueue;
+use consensus::import_queue::{ImportQueue};
+use consensus::SkipResult;
 use crate::message::{self, BlockRequest as BlockRequestMessage, Message};
 use crate::message::generic::{Message as GenericMessage, ConsensusMessage};
 use crate::consensus_gossip::ConsensusGossip;
@@ -281,13 +282,6 @@ pub enum ProtocolMsg<B: BlockT, S: NetworkSpecialization<B>> {
 	/// Synchronization request.
 	#[cfg(any(test, feature = "test-helpers"))]
 	Synchronize,
-}
-
-#[derive(Clone, Copy)]
-pub enum SkipResult {
-	Success,
-	Pending,
-	Failure,
 }
 
 /// Messages sent to Protocol from Network-libp2p.

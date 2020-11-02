@@ -42,7 +42,7 @@ use runtime_primitives::{Justification, Proof};
 
 use crate::error::Error as ConsensusError;
 use parity_codec::alloc::collections::hash_map::HashMap;
-use crate::well_known_cache_keys;
+use crate::{well_known_cache_keys, SkipResult};
 
 /// Shared block import struct used by the queue.
 pub type SharedBlockImport<B> = Arc<dyn BlockImport<B, Error = ConsensusError> + Send + Sync>;
@@ -498,16 +498,17 @@ impl<B: BlockT> BlockImporter<B> {
 	}
 
 	fn handle_skip_justification(&self, hash: B::Hash, number: NumberFor<B>, signalers: Vec<(B::Hash, NumberFor<B>)>) {
-		let success = self.justification_import.as_ref().map(|justification_import| {
+
+		let result = self.justification_import.as_ref().map(|justification_import| {
 			justification_import.skip_justification(hash, number, signalers)
 				.map_err(|e| {
 					debug!(target: "sync", "Justification skip failed with {:?} for hash: {:?} number: {:?}", e, hash, number);
 					e
-				}).is_ok()
-		}).unwrap_or(false);
+				})
+		}).unwrap_or(Ok(SkipResult::Failure)).unwrap_or(SkipResult::Failure);
 
 		if let Some(link) = self.link.as_ref() {
-			link.justification_skipped(&hash, number, success);
+			link.justification_skipped(&hash, number, result);
 		}
 	}
 }
@@ -619,7 +620,7 @@ pub trait Link<B: BlockT>: Send {
 	/// Fork
 	fn fork(&self, _blocks: Vec<(B::Hash, NumberFor<B>)>) {}
 	/// Justification skip result.
-	fn justification_skipped(&self, _hash: &B::Hash, _number: NumberFor<B>, _success: bool) {}
+	fn justification_skipped(&self, _hash: &B::Hash, _number: NumberFor<B>, _result: SkipResult) {}
 	/// Disconnect from peer.
 	fn useless_peer(&self, _who: Origin, _reason: &str) {}
 	/// Disconnect from peer and restart sync.

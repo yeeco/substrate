@@ -130,3 +130,10 @@ pub mod well_known_cache_keys {
 	/// A list of authorities.
 	pub const AUTHORITIES: Id = *b"auth";
 }
+
+#[derive(Debug, Clone, Copy)]
+pub enum SkipResult {
+	Success,
+	Pending,
+	Failure,
+}

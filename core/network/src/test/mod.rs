@@ -32,7 +32,7 @@ use crate::config::ProtocolConfig;
 use consensus::import_queue::{BasicQueue, ImportQueue, IncomingBlock};
 use consensus::import_queue::{Link, SharedBlockImport, SharedJustificationImport, Verifier};
 use consensus::{Error as ConsensusError, ErrorKind as ConsensusErrorKind};
-use consensus::{BlockOrigin, ForkChoiceStrategy, ImportBlock, JustificationImport};
+use consensus::{BlockOrigin, ForkChoiceStrategy, ImportBlock, JustificationImport, SkipResult};
 use crate::consensus_gossip::ConsensusGossip;
 use crossbeam_channel::{Sender, RecvError};
 use futures::Future;
@@ -863,7 +863,7 @@ impl JustificationImport<Block> for ForceFinalized {
 		hash: B::Hash,
 		number: NumberFor<B>,
 		signalers: Vec<(B::Hash, NumberFor<B>)>,
-	) -> Result<(), Self::Error> {
+	) -> Result<SkipResult, Self::Error> {
 		unreachable!()
 	}
 }
