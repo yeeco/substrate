@@ -18,7 +18,7 @@ use std::cmp::max;
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 use log::{debug, trace, warn, info};
-use crate::protocol::Context;
+use crate::protocol::{Context, SkipResult};
 use fork_tree::{ForkTree, FinalizationResult};
 use network_libp2p::{Severity, PeerId};
 use client::{BlockStatus, ClientInfo};
@@ -55,6 +55,8 @@ const MAX_JUSTIFICATION_TO_REQUEST: u32 = 128;
 const JUSTIFICATION_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 // Hold wait
 const HOLD_WAIT: Duration = Duration::from_secs(60);
+// Time to wait before trying to skip a justification.
+const SKIP_RETRY_WAIT: Duration = Duration::from_secs(60);
 
 #[derive(Debug)]
 struct PeerSync<B: BlockT> {
@@ -109,6 +111,7 @@ struct PendingJustifications<B: BlockT> {
     importing_requests: HashSet<PendingJustification<B>>,
     justifications_cache: LruCache<B::Hash, (PeerId, Justification)>,
     pending_skip_justifications: BTreeMap<NumberFor<B>, Vec<PendingJustification<B>>>,
+    previous_skips: HashMap<NumberFor<B>, Instant>,
 }
 
 impl<B: BlockT> PendingJustifications<B> {
@@ -121,6 +124,7 @@ impl<B: BlockT> PendingJustifications<B> {
             importing_requests: HashSet::new(),
             justifications_cache: LruCache::new(MAX_JUSTIFICATION_TO_REQUEST as usize),
             pending_skip_justifications: BTreeMap::new(),
+            previous_skips: HashMap::new(),
         }
     }
 
@@ -162,16 +166,23 @@ impl<B: BlockT> PendingJustifications<B> {
             requests.retain(|(_, instant)| instant.elapsed() < JUSTIFICATION_RETRY_WAIT);
         }
 
+        // clean up previous failed skips so we can retry again
+        self.previous_skips.retain( | _, instant | {
+            instant.elapsed() < SKIP_RETRY_WAIT
+        });
+
         // dispatch locally (skip or cached)
         let mut unhandled_requests = VecDeque::new();
         while let Some(request) = self.pending_requests.pop_front() {
             // skip
             if let Some(signalers) = self.pending_skip_justifications.get(&request.1){
-                // perform skip
-                trace!(target: "sync", "Skip justification for block #{}", request.0);
-                import_queue.skip_justification(request.0, request.1, signalers.clone());
-                self.importing_requests.insert(request);
-                continue;
+                if !self.previous_skips.contains_key(&request.1) {
+                    // perform skip
+                    trace!(target: "sync", "Skip justification for block #{}", request.0);
+                    import_queue.skip_justification(request.0, request.1, signalers.clone());
+                    self.importing_requests.insert(request);
+                    continue;
+                }
             }
             // cached
             if let Some((who, justification)) = self.justifications_cache.remove(&request.0){
@@ -340,6 +351,7 @@ impl<B: BlockT> PendingJustifications<B> {
             }
 
             self.previous_requests.clear();
+            self.previous_skips.clear();
             self.peer_requests.clear();
             self.pending_requests =
                 self.justifications.roots().map(|(h, n, _)| (h.clone(), n.clone())).collect();
@@ -347,6 +359,54 @@ impl<B: BlockT> PendingJustifications<B> {
             return;
         }
         self.pending_requests.push_front(request);
+
+        // remove cache
+        self.justifications_cache.remove(&request.0);
+    }
+
+    fn justification_skip_result(&mut self, hash: B::Hash, number: NumberFor<B>, result: SkipResult) {
+        let request = (hash, number);
+
+        if !self.importing_requests.remove(&request) {
+            debug!(target: "sync", "Got justification import result for unknown justification {:?} {:?} request.",
+                   request.0,
+                   request.1,
+            );
+
+            return;
+        };
+
+        if let SkipResult::Success = result {
+            if self.justifications.finalize_root(&request.0).is_none() {
+                warn!(target: "sync", "Imported justification for {:?} {:?} which isn't a root in the tree: {:?}",
+                      request.0,
+                      request.1,
+                      self.justifications.roots().collect::<Vec<_>>(),
+                );
+
+                return;
+            };
+
+            let skip_numbers = self.pending_skip_justifications.range(..=number).map(|(k, _v)| k.clone()).collect::<Vec<_>>();
+            for skip_number in skip_numbers {
+                self.pending_skip_justifications.remove(&skip_number);
+            }
+
+            self.previous_requests.clear();
+            self.previous_skips.clear();
+            self.peer_requests.clear();
+            self.pending_requests =
+                self.justifications.roots().map(|(h, n, _)| (h.clone(), n.clone())).collect();
+
+            return;
+        }
+
+        if let SkipResult::Failure = result {
+            self.previous_skips.insert(request.1, Instant::now());
+        }
+
+        self.pending_requests.push_front(request);
+
     }
 
     fn fork(&mut self, blocks: Vec<(B::Hash, NumberFor<B>)>) {
@@ -360,6 +420,7 @@ impl<B: BlockT> PendingJustifications<B> {
         }
 
         self.previous_requests.clear();
+        self.previous_skips.clear();
         self.peer_requests.clear();
         self.pending_requests =
             self.justifications.roots().map(|(h, n, _)| (h.clone(), n.clone())).collect();
@@ -437,7 +498,9 @@ impl<B: BlockT> PendingJustifications<B> {
             for skip_number in skip_numbers {
                 self.pending_skip_justifications.remove(&skip_number);
             }
-
+            self.previous_requests.clear();
+            self.previous_skips.clear();
+            self.peer_requests.clear();
             self.pending_requests =
                 self.justifications.roots().map(|(h, n, _)| (h.clone(), n.clone())).collect();
         }
@@ -451,6 +514,7 @@ impl<B: BlockT> PendingJustifications<B> {
         self.pending_requests.clear();
         self.peer_requests.clear();
         self.previous_requests.clear();
+        self.previous_skips.clear();
     }
 }
 
@@ -945,6 +1009,14 @@ impl<B: BlockT> ChainSync<B> {
         self.justifications.justification_import_result(hash, number, success);
 
         if success {
+            self.justifications.dispatch(&mut self.peers, protocol, &*self.import_queue);
+        }
+    }
+
+    pub fn justification_skip_result(&mut self, hash: B::Hash, number: NumberFor<B>, result: SkipResult, protocol: &mut Context<B>) {
+        self.justifications.justification_skip_result(hash, number, result);
+
+        if let SkipResult::Success = result {
             self.justifications.dispatch(&mut self.peers, protocol, &*self.import_queue);
         }
     }

@@ -250,6 +250,8 @@ pub enum ProtocolMsg<B: BlockT, S: NetworkSpecialization<B>> {
 	JustificationImportResult(B::Hash, NumberFor<B>, bool),
 	/// Skip justification
 	SkipJustification(B::Hash, NumberFor<B>, (B::Hash, NumberFor<B>)),
+	/// Inform protocol whether a justification was successfully imported.
+	JustificationSkipResult(B::Hash, NumberFor<B>, SkipResult),
 	/// Fork
 	Fork(Vec<(B::Hash, NumberFor<B>)>),
 	/// Propagate a block to peers.
@@ -279,6 +281,13 @@ pub enum ProtocolMsg<B: BlockT, S: NetworkSpecialization<B>> {
 	/// Synchronization request.
 	#[cfg(any(test, feature = "test-helpers"))]
 	Synchronize,
+}
+
+#[derive(Clone, Copy)]
+pub enum SkipResult {
+	Success,
+	Pending,
+	Failure,
 }
 
 /// Messages sent to Protocol from Network-libp2p.
@@ -445,6 +454,11 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 			},
 			ProtocolMsg::SkipJustification(hash, number, signaler) => {
 				self.sync.skip_justification(hash, number, signaler);
+			},
+			ProtocolMsg::JustificationSkipResult(hash, number, result) => {
+				let mut context =
+					ProtocolContext::new(&mut self.context_data, &self.network_chan);
+				self.sync.justification_skip_result(hash, number, result, &mut context);
 			},
 			ProtocolMsg::Fork(blocks) => {
 				self.sync.fork(blocks);
