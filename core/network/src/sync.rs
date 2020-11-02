@@ -323,6 +323,8 @@ impl<B: BlockT> PendingJustifications<B> {
     /// Process the import of a justification.
     /// Queues a retry in case the import failed.
     fn justification_import_result(&mut self, hash: B::Hash, number: NumberFor<B>, success: bool) {
+        debug!(target: "sync", "justification import result: number: {} hash: {} success: {:?}", number, hash, success);
+
         let request = (hash, number);
 
         if !self.importing_requests.remove(&request) {
@@ -365,6 +367,8 @@ impl<B: BlockT> PendingJustifications<B> {
     }
 
     fn justification_skip_result(&mut self, hash: B::Hash, number: NumberFor<B>, result: SkipResult) {
+        debug!(target: "sync", "justification skip result: number: {} hash: {} result: {:?}", number, hash, result);
+
         let request = (hash, number);
 
         if !self.importing_requests.remove(&request) {
