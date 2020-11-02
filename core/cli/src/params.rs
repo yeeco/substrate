@@ -83,11 +83,29 @@ pub struct SharedParams {
 	/// Sets a custom logging filter
 	#[structopt(short = "l", long = "log", value_name = "LOG_PATTERN")]
 	pub log: Option<String>,
+
+	/// Sets a custom logging filter
+	#[structopt(long = "log-conf", value_name = "LOG_CONF", parse(from_os_str))]
+	pub log_conf: Option<PathBuf>,
 }
 
 impl GetLogFilter for SharedParams {
 	fn get_log_filter(&self) -> Option<String> {
-		self.log.clone()
+
+		if self.log.is_some() {
+			return self.log.clone();
+		}
+		match &self.log_conf {
+			Some(log_conf) => {
+				match std::fs::read_to_string(log_conf) {
+					Ok(content) => {
+						Some(content)
+					},
+					_ => None,
+				}
+			},
+			None => None,
+		}
 	}
 }
 
