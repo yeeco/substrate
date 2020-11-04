@@ -26,6 +26,7 @@ use network_libp2p::{start_service, parse_str_addr, Service as NetworkService, S
 use network_libp2p::{RegisteredProtocol, NetworkState};
 use peerset::PeersetHandle;
 use consensus::import_queue::{ImportQueue, Link};
+use consensus::SkipResult;
 use crate::consensus_gossip::ConsensusGossip;
 use crate::message::Message;
 use crate::protocol::{self, Context, FromNetworkMsg, Protocol, ConnectedPeer, ProtocolMsg, ProtocolStatus, PeerInfo};
@@ -56,6 +57,8 @@ pub trait SyncProvider<B: BlockT>: Send + Sync {
 	fn peers(&self) -> Vec<(PeerId, PeerInfo<B>)>;
 	/// Are we in the process of downloading the chain?
 	fn is_major_syncing(&self) -> bool;
+	/// Inspect
+	fn inspect(&self);
 }
 
 /// Minimum Requirements for a Hash within Networking
@@ -104,12 +107,24 @@ impl<B: BlockT, S: NetworkSpecialization<B>> Link<B> for NetworkLink<B, S> {
 		}
 	}
 
+	fn justification_skipped(&self, hash: &B::Hash, number: NumberFor<B>, result: SkipResult) {
+		let _ = self.protocol_sender.send(ProtocolMsg::JustificationSkipResult(hash.clone(), number, result));
+	}
+
 	fn clear_justification_requests(&self) {
 		let _ = self.protocol_sender.send(ProtocolMsg::ClearJustificationRequests);
 	}
 
 	fn request_justification(&self, hash: &B::Hash, number: NumberFor<B>) {
 		let _ = self.protocol_sender.send(ProtocolMsg::RequestJustification(hash.clone(), number));
+	}
+
+	fn skip_justification(&self, hash: B::Hash, number: NumberFor<B>, signaler: (B::Hash, NumberFor<B>)) {
+		let _ = self.protocol_sender.send(ProtocolMsg::SkipJustification(hash, number, signaler));
+	}
+
+	fn fork(&self, blocks: Vec<(B::Hash, NumberFor<B>)>) {
+		let _ = self.protocol_sender.send(ProtocolMsg::Fork(blocks));
 	}
 
 	fn useless_peer(&self, who: PeerId, reason: &str) {
@@ -130,10 +145,6 @@ impl<B: BlockT, S: NetworkSpecialization<B>> Link<B> for NetworkLink<B, S> {
 
 	fn hold(&self) {
 		let _ = self.protocol_sender.send(ProtocolMsg::HoldSync);
-	}
-
-	fn skip_justification_requests(&self, justifications: Vec<(B::Hash, NumberFor<B>)>) {
-		let _ = self.protocol_sender.send(ProtocolMsg::SkipJustificationRequests(justifications));
 	}
 }
 
@@ -166,6 +177,7 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, I: IdentifySpecialization
 		params: Params<B, S, H, I>,
 		protocol_id: ProtocolId,
 		import_queue: Box<ImportQueue<B>>,
+		network_id: Option<u32>,
 	) -> Result<(Arc<Service<B, S, I>>, NetworkChan<B>), Error> {
 		let (network_chan, network_port) = network_channel();
 		let status_sinks = Arc::new(Mutex::new(Vec::new()));
@@ -185,6 +197,7 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, I: IdentifySpecialization
 			params.on_demand,
 			params.transaction_pool,
 			params.specialization,
+			network_id,
 		)?;
 		let versions = [(protocol::CURRENT_VERSION as u8)];
 		let registered = RegisteredProtocol::new(protocol_id, &versions[..]);
@@ -194,6 +207,7 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, I: IdentifySpecialization
 			params.network_config,
 			registered,
 			params.identify_specialization,
+			network_id,
 		)?;
 
 		let service = Arc::new(Service {
@@ -343,6 +357,10 @@ impl<B: BlockT + 'static, S: NetworkSpecialization<B>, I: IdentifySpecialization
 		let peers = (*self.peers.read()).clone();
 		peers.into_iter().map(|(idx, connected)| (idx, connected.peer_info)).collect()
 	}
+
+	fn inspect(&self) {
+		let _ = self.protocol_sender.send(ProtocolMsg::Inspect);
+	}
 }
 
 /// Trait for managing network
@@ -472,6 +490,7 @@ fn start_thread<B: BlockT + 'static, I: IdentifySpecialization>(
 	config: NetworkConfiguration,
 	registered: RegisteredProtocol<Message<B>>,
 	identify_specialization: I,
+	network_id: Option<u32>,
 ) -> Result<((oneshot::Sender<()>, thread::JoinHandle<()>), Arc<Mutex<NetworkService<Message<B>, I>>>, PeersetHandle), Error> {
 	// Start the main service.
 	let (service, peerset) = match start_service(config, registered, identify_specialization) {
@@ -486,9 +505,7 @@ fn start_thread<B: BlockT + 'static, I: IdentifySpecialization>(
 	let service_clone = service.clone();
 	let mut runtime = RuntimeBuilder::new().name_prefix("libp2p-").build()?;
 	let peerset_clone = peerset.clone();
-	let thread_id = thread_rng().gen_range(0, 65536);
-	let name = format!("Network-{}", thread_id);
-	info!(target: "sub-libp2p", "Start thread: {}", name);
+	let name = format!("Network-{}", network_id.map(|x|format!("{}", x)).unwrap_or("main".to_string()));
 	let thread = thread::Builder::new().stack_size(1024 * 1024 * 1024).name(name).spawn(move || {
 		let fut = run_thread(protocol_sender, service_clone, network_port, peerset_clone)
 			.select(close_rx.then(|_| Ok(())))

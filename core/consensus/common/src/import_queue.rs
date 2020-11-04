@@ -42,6 +42,7 @@ use runtime_primitives::{Justification, Proof};
 
 use crate::error::Error as ConsensusError;
 use parity_codec::alloc::collections::hash_map::HashMap;
+use crate::{well_known_cache_keys, SkipResult};
 
 /// Shared block import struct used by the queue.
 pub type SharedBlockImport<B> = Arc<dyn BlockImport<B, Error = ConsensusError> + Send + Sync>;
@@ -99,6 +100,8 @@ pub trait ImportQueue<B: BlockT>: Send + Sync + ImportQueueClone<B> {
 	fn import_blocks(&self, origin: BlockOrigin, blocks: Vec<IncomingBlock<B>>);
 	/// Import a block justification.
 	fn import_justification(&self, who: Origin, hash: B::Hash, number: NumberFor<B>, justification: Justification);
+	/// Skip a block justification.
+	fn skip_justification(&self, hash: B::Hash, number: NumberFor<B>, signalers: Vec<(B::Hash, NumberFor<B>)>);
 }
 
 pub trait ImportQueueClone<B: BlockT> {
@@ -111,11 +114,18 @@ impl<B: BlockT> Clone for Box<ImportQueue<B>> {
 	}
 }
 
+pub trait BlockBuilder<B: BlockT>: Send + Sync {
+	fn build(&self, block: ImportBlock<B>,
+			 cache: HashMap<well_known_cache_keys::Id, Vec<u8>>,
+	) -> Result<ImportResult<B::Hash, NumberFor<B>>, ConsensusError>;
+}
+
 /// Interface to a basic block import queue that is importing blocks sequentially in a separate thread,
 /// with pluggable verification.
 #[derive(Clone)]
 pub struct BasicQueue<B: BlockT> {
 	sender: Sender<BlockImportMsg<B>>,
+	block_import: SharedBlockImport<B>,
 }
 
 impl<B: BlockT> ImportQueueClone<B> for BasicQueue<B> {
@@ -144,14 +154,16 @@ impl<B: BlockT> BasicQueue<B> {
 	pub fn new<V: 'static + Verifier<B>>(
 		verifier: Arc<V>,
 		block_import: SharedBlockImport<B>,
-		justification_import: Option<SharedJustificationImport<B>>
+		justification_import: Option<SharedJustificationImport<B>>,
+		network_id: Option<u32>,
 	) -> Self {
 		let (result_sender, result_port) = channel::unbounded();
-		let worker_sender = BlockImportWorker::new(result_sender, verifier, block_import);
-		let importer_sender = BlockImporter::new(result_port, worker_sender, justification_import);
+		let worker_sender = BlockImportWorker::new(result_sender, verifier, block_import.clone(), network_id);
+		let importer_sender = BlockImporter::new(result_port, worker_sender, justification_import, network_id);
 
 		Self {
 			sender: importer_sender,
+			block_import,
 		}
 	}
 
@@ -201,11 +213,42 @@ impl<B: BlockT> ImportQueue<B> for BasicQueue<B> {
 			.send(BlockImportMsg::ImportJustification(who.clone(), hash, number, justification))
 			.expect("1. self is holding a sender to the Importer, 2. Importer should handle messages while there are senders around; qed");
 	}
+
+	fn skip_justification(&self, hash: B::Hash, number: NumberFor<B>, signalers: Vec<(B::Hash, NumberFor<B>)>) {
+		let _ = self
+			.sender
+			.send(BlockImportMsg::SkipJustification(hash, number, signalers))
+			.expect("1. self is holding a sender to the Importer, 2. Importer should handle messages while there are senders around; qed");
+	}
+}
+
+impl<B: BlockT> BlockBuilder<B> for BasicQueue<B> {
+	fn build(&self, block: ImportBlock<B>,
+			 cache: HashMap<well_known_cache_keys::Id, Vec<u8>>,
+	) -> Result<ImportResult<B::Hash, NumberFor<B>>, ConsensusError> {
+
+		let hash = block.post_header().hash().clone();
+		let number = block.post_header().number().clone();
+
+		let import_result = self.block_import.import_block(block, cache);
+		match &import_result {
+			Ok(ImportResult::Imported(aux)) => {
+				let _ = self
+					.sender
+					.send(BlockImportMsg::Built(hash, number, aux.clone()))
+					.expect("1. self is holding a sender to the Importer, 2. Importer should handle messages while there are senders around; qed");
+			},
+			_ => (),
+		}
+		import_result
+	}
 }
 
 pub enum BlockImportMsg<B: BlockT> {
 	ImportBlocks(BlockOrigin, Vec<IncomingBlock<B>>),
 	ImportJustification(Origin, B::Hash, NumberFor<B>, Justification),
+	Built(B::Hash, NumberFor<B>, ImportedAux<B::Hash, NumberFor<B>>),
+	SkipJustification(B::Hash, NumberFor<B>, Vec<(B::Hash, NumberFor<B>)>),
 	Start(Box<Link<B>>, Sender<Result<(), std::io::Error>>),
 	Stop,
 	#[cfg(any(test, feature = "test-helpers"))]
@@ -242,11 +285,10 @@ impl<B: BlockT> BlockImporter<B> {
 		result_port: Receiver<BlockImportWorkerMsg<B>>,
 		worker_sender: Sender<BlockImportWorkerMsg<B>>,
 		justification_import: Option<SharedJustificationImport<B>>,
+		network_id: Option<u32>,
 	) -> Sender<BlockImportMsg<B>> {
 		let (sender, port) = channel::bounded(4);
-		let thread_id = thread_rng().gen_range(0, 65536);
-		let name = format!("ImportQueue-{}", thread_id);
-		info!(target: "sync", "Start thread: {}", name);
+		let name = format!("ImportQueue-{}", network_id.map(|x|format!("{}", x)).unwrap_or("main".to_string()));
 		let _ = thread::Builder::new().stack_size(1024 * 1024 * 1024)
 			.name(name)
 			.spawn(move || {
@@ -294,6 +336,12 @@ impl<B: BlockT> BlockImporter<B> {
 			},
 			BlockImportMsg::ImportJustification(who, hash, number, justification) => {
 				self.handle_import_justification(who, hash, number, justification)
+			},
+			BlockImportMsg::Built(hash, number, aux) => {
+				self.handle_built(hash, number, aux)
+			},
+			BlockImportMsg::SkipJustification(hash, number, signalers) => {
+				self.handle_skip_justification( hash, number, signalers)
 			},
 			BlockImportMsg::Start(link, sender) => {
 				if let Some(justification_import) = self.justification_import.as_ref() {
@@ -365,10 +413,17 @@ impl<B: BlockT> BlockImporter<B> {
 						}
 					}
 
-					if aux.skip_justification_requests.len() > 0 {
-						trace!(target: "sync", "Block imported skip pending justification requests: {:?}", aux.skip_justification_requests);
-						link.skip_justification_requests(aux.skip_justification_requests);
+					if let Some((skip_hash, skip_number)) = aux.skip_justification {
+						let signaler = (hash, number);
+						trace!(target: "sync", "Block imported skip justification: {}: {:?} signaler: {:?}", skip_number, skip_hash, signaler);
+						link.skip_justification(skip_hash, skip_number, signaler);
 					}
+
+					if let Some(fork_blocks) = aux.fork {
+						trace!(target: "sync", "Block imported fork : {:?}", fork_blocks);
+						link.fork(fork_blocks);
+					}
+
 				},
 				Err(BlockImportError::IncompleteHeader(who)) => {
 					if let Some(peer) = who {
@@ -413,11 +468,48 @@ impl<B: BlockT> BlockImporter<B> {
 		}
 	}
 
+	fn handle_built(&self, hash: B::Hash, number: NumberFor<B>, aux: ImportedAux<B::Hash, NumberFor<B>>) {
+
+		if let Some(link) = self.link.as_ref() {
+
+			if aux.needs_justification {
+				trace!(target: "sync", "Block built but requires justification {}: {:?}", number, hash);
+				link.request_justification(&hash, number);
+			}
+
+			if let Some((skip_hash, skip_number)) = aux.skip_justification {
+				let signaler = (hash, number);
+				trace!(target: "sync", "Block built skip justification: {}: {:?} signaler: {:?}", skip_number, skip_hash, signaler);
+				link.skip_justification(skip_hash, skip_number, signaler);
+			}
+
+			if let Some(fork_blocks) = aux.fork {
+				trace!(target: "sync", "Block built fork : {:?}", fork_blocks);
+				link.fork(fork_blocks);
+			}
+		}
+	}
+
 	fn handle_import_blocks(&mut self, origin: BlockOrigin, blocks: Vec<IncomingBlock<B>>) {
 		trace!(target: "sync", "Scheduling {} blocks for import", blocks.len());
 		self.worker_sender
 			.send(BlockImportWorkerMsg::ImportBlocks(origin, blocks))
 			.expect("1. This is holding a sender to the worker, 2. the worker should not quit while a sender is still held; qed");
+	}
+
+	fn handle_skip_justification(&self, hash: B::Hash, number: NumberFor<B>, signalers: Vec<(B::Hash, NumberFor<B>)>) {
+
+		let result = self.justification_import.as_ref().map(|justification_import| {
+			justification_import.skip_justification(hash, number, signalers)
+				.map_err(|e| {
+					debug!(target: "sync", "Justification skip failed with {:?} for hash: {:?} number: {:?}", e, hash, number);
+					e
+				})
+		}).unwrap_or(Ok(SkipResult::Failure)).unwrap_or(SkipResult::Failure);
+
+		if let Some(link) = self.link.as_ref() {
+			link.justification_skipped(&hash, number, result);
+		}
 	}
 }
 
@@ -432,11 +524,10 @@ impl<B: BlockT, V: 'static + Verifier<B>> BlockImportWorker<B, V> {
 		result_sender: Sender<BlockImportWorkerMsg<B>>,
 		verifier: Arc<V>,
 		block_import: SharedBlockImport<B>,
+		network_id: Option<u32>,
 	) -> Sender<BlockImportWorkerMsg<B>> {
 		let (sender, port) = channel::unbounded();
-		let thread_id = thread_rng().gen_range(0, 65536);
-		let name = format!("ImportQueueWorker-{}", thread_id);
-		info!(target: "sync", "Start thread: {}", name);
+		let name = format!("ImportQueueWorker-{}", network_id.map(|x|format!("{}", x)).unwrap_or("main".to_string()));
 		let _ = thread::Builder::new().stack_size(1024 * 1024 * 1024)
 			.name(name)
 			.spawn(move || {
@@ -524,6 +615,12 @@ pub trait Link<B: BlockT>: Send {
 	fn clear_justification_requests(&self) {}
 	/// Request a justification for the given block.
 	fn request_justification(&self, _hash: &B::Hash, _number: NumberFor<B>) {}
+	/// Skip justification
+	fn skip_justification(&self, _hash: B::Hash, _number: NumberFor<B>, _signaler: (B::Hash, NumberFor<B>)) {}
+	/// Fork
+	fn fork(&self, _blocks: Vec<(B::Hash, NumberFor<B>)>) {}
+	/// Justification skip result.
+	fn justification_skipped(&self, _hash: &B::Hash, _number: NumberFor<B>, _result: SkipResult) {}
 	/// Disconnect from peer.
 	fn useless_peer(&self, _who: Origin, _reason: &str) {}
 	/// Disconnect from peer and restart sync.
@@ -532,8 +629,6 @@ pub trait Link<B: BlockT>: Send {
 	fn restart(&self) {}
 	/// Hold sync.
 	fn hold(&self) {}
-	/// Skip justifications
-	fn skip_justification_requests(&self, _justifications: Vec<(B::Hash, NumberFor<B>)>) {}
 	/// Synchronization request has been processed.
 	#[cfg(any(test, feature = "test-helpers"))]
 	fn synchronized(&self) {}

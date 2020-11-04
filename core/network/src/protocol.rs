@@ -21,7 +21,8 @@ use network_libp2p::{PeerId, Severity};
 use primitives::storage::StorageKey;
 use runtime_primitives::{generic::BlockId, ConsensusEngineId};
 use runtime_primitives::traits::{As, Block as BlockT, Header as HeaderT, NumberFor, Zero};
-use consensus::import_queue::ImportQueue;
+use consensus::import_queue::{ImportQueue};
+use consensus::SkipResult;
 use crate::message::{self, BlockRequest as BlockRequestMessage, Message};
 use crate::message::generic::{Message as GenericMessage, ConsensusMessage};
 use crate::consensus_gossip::ConsensusGossip;
@@ -81,6 +82,7 @@ pub struct Protocol<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> {
 	// similar to context_data.peers but shared with the SyncProvider.
 	connected_peers: Arc<RwLock<HashMap<PeerId, ConnectedPeer<B>>>>,
 	transaction_pool: Arc<TransactionPool<H, B>>,
+	network_id: Option<u32>,
 }
 
 /// A peer from whom we have received a Status message.
@@ -247,6 +249,12 @@ pub enum ProtocolMsg<B: BlockT, S: NetworkSpecialization<B>> {
 	RequestJustification(B::Hash, NumberFor<B>),
 	/// Inform protocol whether a justification was successfully imported.
 	JustificationImportResult(B::Hash, NumberFor<B>, bool),
+	/// Skip justification
+	SkipJustification(B::Hash, NumberFor<B>, (B::Hash, NumberFor<B>)),
+	/// Inform protocol whether a justification was successfully imported.
+	JustificationSkipResult(B::Hash, NumberFor<B>, SkipResult),
+	/// Fork
+	Fork(Vec<(B::Hash, NumberFor<B>)>),
 	/// Propagate a block to peers.
 	AnnounceBlock(B::Hash),
 	/// A block has been imported (sent by the client).
@@ -269,8 +277,8 @@ pub enum ProtocolMsg<B: BlockT, S: NetworkSpecialization<B>> {
 	Tick,
 	/// Hold sync
 	HoldSync,
-	/// Skip justification
-	SkipJustificationRequests(Vec<(B::Hash, NumberFor<B>)>),
+	/// Inspect
+	Inspect,
 	/// Synchronization request.
 	#[cfg(any(test, feature = "test-helpers"))]
 	Synchronize,
@@ -310,14 +318,13 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 		on_demand: Option<Arc<OnDemandService<B>>>,
 		transaction_pool: Arc<TransactionPool<H, B>>,
 		specialization: S,
+		network_id: Option<u32>,
 	) -> error::Result<(Sender<ProtocolMsg<B, S>>, Sender<FromNetworkMsg<B>>)> {
 		let (protocol_sender, port) = channel::unbounded();
 		let (from_network_sender, from_network_port) = channel::bounded(4);
 		let info = chain.info()?;
 		let sync = ChainSync::new(is_offline, is_major_syncing, config.clone(), &info, import_queue);
-		let thread_id = thread_rng().gen_range(0, 65536);
-		let name = format!("Protocol-{}", thread_id);
-		info!(target: "sync", "Start thread: {}", name);
+		let name = format!("Protocol-{}", network_id.map(|x|format!("{}", x)).unwrap_or("main".to_string()));
 		let _ = thread::Builder::new()
 			.name(name).stack_size(1024 * 1024 * 1024)
 			.spawn(move || {
@@ -339,6 +346,7 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 					handshaking_peers: HashMap::new(),
 					connected_peers,
 					transaction_pool: transaction_pool,
+					network_id,
 				};
 				let tick_timeout = channel::tick(TICK_TIMEOUT);
 				let propagate_timeout = channel::tick(PROPAGATE_TIMEOUT);
@@ -438,6 +446,17 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 					ProtocolContext::new(&mut self.context_data, &self.network_chan);
 				self.sync.justification_import_result(hash, number, success, &mut context);
 			},
+			ProtocolMsg::SkipJustification(hash, number, signaler) => {
+				self.sync.skip_justification(hash, number, signaler);
+			},
+			ProtocolMsg::JustificationSkipResult(hash, number, result) => {
+				let mut context =
+					ProtocolContext::new(&mut self.context_data, &self.network_chan);
+				self.sync.justification_skip_result(hash, number, result, &mut context);
+			},
+			ProtocolMsg::Fork(blocks) => {
+				self.sync.fork(blocks);
+			},
 			ProtocolMsg::PropagateExtrinsics => self.propagate_extrinsics(),
 			ProtocolMsg::Tick => self.tick(),
 			#[cfg(any(test, feature = "test-helpers"))]
@@ -451,8 +470,8 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 					ProtocolContext::new(&mut self.context_data, &self.network_chan);
 				self.sync.hold(&mut context, true);
 			},
-			ProtocolMsg::SkipJustificationRequests(justifications) => {
-				self.sync.skip_justification_requests(justifications);
+			ProtocolMsg::Inspect => {
+				self.inspect();
 			}
 			#[cfg(any(test, feature = "test-helpers"))]
 			ProtocolMsg::Synchronize => self.network_chan.send(NetworkMsg::Synchronized),
@@ -1163,6 +1182,10 @@ impl<B: BlockT, S: NetworkSpecialization<B>, H: ExHashT> Protocol<B, S, H> {
 		self.on_demand
 			.as_ref()
 			.map(|s| s.on_remote_changes_response(who, response));
+	}
+
+	fn inspect(&self) {
+		self.sync.inspect();
 	}
 }
 

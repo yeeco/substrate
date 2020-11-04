@@ -753,7 +753,7 @@ pub fn import_queue<B, C, E, P>(
 			allow_old_seals: false,
 		}
 	);
-	Ok(BasicQueue::new(verifier, block_import, justification_import))
+	Ok(BasicQueue::new(verifier, block_import, justification_import, None))
 }
 
 /// Start an import queue for the Aura consensus algorithm with backwards compatibility.
@@ -788,7 +788,7 @@ pub fn import_queue_accept_old_seals<B, C, E, P>(
 			allow_old_seals: true,
 		}
 	);
-	Ok(BasicQueue::new(verifier, block_import, justification_import))
+	Ok(BasicQueue::new(verifier, block_import, justification_import, None))
 }
 
 #[cfg(test)]

@@ -235,7 +235,8 @@ impl<Components: components::Components> Service<Components> {
 		let (network, network_chan) = network::Service::new(
 			network_params,
 			protocol_id,
-			import_queue
+			import_queue,
+			None,
 		)?;
 		on_demand.map(|on_demand| on_demand.set_network_sender(network_chan));
 

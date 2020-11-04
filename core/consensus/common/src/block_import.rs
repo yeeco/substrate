@@ -20,7 +20,7 @@ use runtime_primitives::traits::{Block as BlockT, DigestItemFor, Header as Heade
 use runtime_primitives::{Justification, Proof};
 use std::borrow::Cow;
 use std::collections::HashMap;
-use crate::well_known_cache_keys;
+use crate::{well_known_cache_keys, SkipResult};
 
 /// Block import result.
 #[derive(Debug, PartialEq, Eq)]
@@ -38,7 +38,7 @@ pub enum ImportResult<H, N> {
 }
 
 /// Auxiliary data associated with an imported block result.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ImportedAux<H, N> {
 	/// Clear all pending justification requests.
 	pub clear_justification_requests: bool,
@@ -47,7 +47,9 @@ pub struct ImportedAux<H, N> {
 	/// Received a bad justification.
 	pub bad_justification: bool,
 	/// Skip justification
-	pub skip_justification_requests: Vec<(H, N)>
+	pub skip_justification: Option<(H, N)>,
+	/// Fork
+	pub fork: Option<Vec<(H, N)>>,
 }
 
 impl<H, N> Default for ImportedAux<H, N> {
@@ -56,7 +58,8 @@ impl<H, N> Default for ImportedAux<H, N> {
 			clear_justification_requests: false,
 			needs_justification: false,
 			bad_justification: false,
-			skip_justification_requests: Default::default(),
+			skip_justification: None,
+			fork: None,
 		}
 	}
 }
@@ -209,4 +212,12 @@ pub trait JustificationImport<B: BlockT> {
 		number: NumberFor<B>,
 		justification: Justification,
 	) -> Result<(), Self::Error>;
+
+	/// Skip a Block justification and finalize the given block.
+	fn skip_justification(
+		&self,
+		hash: B::Hash,
+		number: NumberFor<B>,
+		signalers: Vec<(B::Hash, NumberFor<B>)>,
+	) -> Result<SkipResult, Self::Error>;
 }
